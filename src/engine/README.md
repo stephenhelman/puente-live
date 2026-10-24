@@ -93,3 +93,24 @@ will be too aggressive.
 
 Auth: browsers cannot set headers on a WebSocket, so the short-lived JWT is passed as the `['bearer', token]` subprotocol pair.
 Tokens come from `POST /v1/auth/grant` (server route) and are only checked at connect time, not for the life of the socket.
+
+## Deploying (Railway)
+
+The app is one long-lived Next.js process (`pnpm build`, then `pnpm start`; see `railway.json`). Node 22.x, pnpm per
+`packageManager`. The health check is `GET /api/health` (public, returns `{"status":"ok"}` and nothing else).
+The in-memory passcode rate limiter is per process, so run exactly **one instance** (do not scale replicas above 1).
+
+Variables to set on the host (purpose only; see `.env.example` for how to generate them):
+
+| Variable | Required | Purpose |
+|---|---|---|
+| `DEEPGRAM_API_KEY` | yes | Server-side key (Member role or higher) used to mint short-lived browser STT tokens. Never sent to clients. |
+| `ANTHROPIC_API_KEY` | yes | Server-side key for translation (Claude Haiku). |
+| `CHAPTER_PASSCODE_HASH` | yes | `scrypt:<salt>:<hash>` of the chapter passcode. |
+| `SESSION_SECRET` | yes | Signs the httpOnly session cookie. |
+| `DEEPGRAM_TOKEN_TTL_SECONDS` | no | Token lifetime, default 60. |
+| `TRANSLATE_MODEL` | no | Translation model id, default `claude-haiku-5-5`. |
+
+`PORT` is injected by Railway. `NODE_ENV=production` is set by `next build`/`next start` and makes the session cookie `Secure`
+(HTTPS only). Microphone access also requires HTTPS, which Railway's generated domain provides.
+No variable is exposed to the browser: the app uses no `NEXT_PUBLIC_*` variables.
