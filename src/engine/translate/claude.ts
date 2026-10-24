@@ -1,5 +1,5 @@
 import { loadDefaultGlossary, type Glossary } from "../glossary";
-import { buildSystemPrompt, buildUserMessage } from "./prompt";
+import { buildSystemPrompt, buildUserMessage, makeStartCaser } from "./prompt";
 import type { TranslateRequest, TranslateResult, TranslateStreamEvent, Translator } from "./types";
 
 export const DEFAULT_TRANSLATE_MODEL = "claude-haiku-5-5";
@@ -40,11 +40,13 @@ export class ClaudeTranslator implements Translator {
     if (!res.ok) {
       throw new Error(`Anthropic ${res.status}: ${body.error?.message ?? "request failed"}`);
     }
-    const out = (body.content ?? [])
-      .filter((b) => b.type === "text")
-      .map((b) => b.text ?? "")
-      .join("")
-      .trim();
+    const out = makeStartCaser(req.context)(
+      (body.content ?? [])
+        .filter((b) => b.type === "text")
+        .map((b) => b.text ?? "")
+        .join("")
+        .trim(),
+    );
     return {
       text: out,
       model: body.model ?? model,
@@ -73,7 +75,7 @@ export class ClaudeTranslator implements Translator {
         // Spoken turns are short; allow generous headroom for a long monologue.
         max_tokens: Math.min(4096, Math.max(256, text.length * 2)),
         system: [{ type: "text", text: this.system, cache_control: { type: "ephemeral" } }],
-        messages: [{ role: "user", content: buildUserMessage(text, req.direction.to) }],
+        messages: [{ role: "user", content: buildUserMessage(text, req.direction.to, req.context) }],
       }),
     });
   }
@@ -92,6 +94,7 @@ export class ClaudeTranslator implements Translator {
       throw new Error(`Anthropic ${res.status}: ${body.error?.message ?? "request failed"}`);
     }
 
+    const caser = makeStartCaser(req.context);
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buf = "";
@@ -118,8 +121,9 @@ export class ClaudeTranslator implements Translator {
         usage.cacheWriteTokens = ev.message?.usage?.cache_creation_input_tokens ?? 0;
       } else if (ev.type === "content_block_delta" && ev.delta?.type === "text_delta" && ev.delta.text) {
         firstDeltaMs ??= performance.now() - t0;
-        full += ev.delta.text;
-        yield { type: "delta", text: ev.delta.text };
+        const text = caser(ev.delta.text);
+        full += text;
+        yield { type: "delta", text };
       } else if (ev.type === "message_delta") {
         usage.outputTokens = ev.usage?.output_tokens ?? usage.outputTokens;
       } else if (ev.type === "error") {

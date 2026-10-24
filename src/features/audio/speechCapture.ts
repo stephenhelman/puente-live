@@ -5,27 +5,25 @@ import { getDeepgramToken } from "./token";
 /** Deepgram may skip from_finalize when little audio is buffered; do not wait forever. */
 const FINALIZE_TIMEOUT_MS = 1500;
 const CONNECT_TIMEOUT_MS = 10_000;
-/** Push-to-talk turns are bounded by the user, so a short endpoint only decides mid-turn segment splits. */
-const ENDPOINTING_MS = 100;
 
 const provider = new DeepgramSttProvider();
 
 export interface SpeechCaptureOptions {
-  /** Live transcript so far (finals + current interim). */
-  onInterim: (text: string) => void;
+  /** How long a pause must last before Deepgram marks speech_final (phrase boundary). */
+  endpointingMs: number;
+  /** Every interim and final result, in order, while recording and during the final flush. */
+  onResult: (r: SttResult) => void;
   /** Connection failed or dropped BEFORE finish() was called. After finish(), failures reject finish(). */
   onError: (e: Error) => void;
 }
 
 /**
  * One tap-to-talk turn: one Deepgram socket. Audio pushed before the socket is open is queued.
- * Call finish() when the user stops; it flushes the vendor and resolves with the transcript.
+ * Results stream out through onResult as they arrive; call finish() when the user stops to flush the vendor.
  */
 export class SpeechCapture {
   private session: SttSession | null = null;
   private queue: ArrayBuffer[] = [];
-  private finals: string[] = [];
-  private interim = "";
   private ended = false;
   private closed = false;
   private failure: Error | null = null;
@@ -46,7 +44,7 @@ export class SpeechCapture {
       const session = await provider.start({
         getToken: getDeepgramToken,
         sampleRate: STT_SAMPLE_RATE,
-        endpointingMs: ENDPOINTING_MS,
+        endpointingMs: this.opts.endpointingMs,
         onResult: (r) => this.onResult(r),
         onError: (e) => this.fail(e),
         onClose: () => {
@@ -75,17 +73,15 @@ export class SpeechCapture {
     else this.queue.push(pcm);
   }
 
-  /** Stop streaming, flush the vendor, resolve with the final transcript (may be empty). */
-  async finish(): Promise<string> {
+  /** Stop streaming and flush the vendor. Resolves once the last results have been delivered to onResult. */
+  async finish(): Promise<void> {
     this.ended = true;
     if (this.failure) throw this.failure;
     await new Promise<void>((resolve, reject) => {
       this.settle = { resolve, reject };
       if (this.session) this.sendFinalize();
     });
-    const text = (this.finals.join(" ") || this.interim).trim();
     this.dispose();
-    return text;
   }
 
   /** Abort without a result. */
@@ -100,13 +96,7 @@ export class SpeechCapture {
 
   private onResult(r: SttResult) {
     if (this.closed) return;
-    if (r.isFinal) {
-      if (r.text) this.finals.push(r.text);
-      this.interim = "";
-    } else {
-      this.interim = r.text;
-    }
-    this.opts.onInterim([...this.finals, this.interim].join(" ").trim());
+    this.opts.onResult(r);
     if (this.ended && r.fromFinalize) this.resolveWaiter();
   }
 

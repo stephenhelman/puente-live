@@ -94,6 +94,46 @@ will be too aggressive.
 Auth: browsers cannot set headers on a WebSocket, so the short-lived JWT is passed as the `['bearer', token]` subprotocol pair.
 Tokens come from `POST /v1/auth/grant` (server route) and are only checked at connect time, not for the life of the socket.
 
+## Phrase boundaries (live translation)
+
+`/converse` translates while the speaker is still talking. `PhraseSegmenter` (`stt/segmenter.ts`) turns Deepgram results into
+phrases; each phrase goes to `translateStream` with the earlier phrases of the same turn as `context` (source, plus the
+translation already shown when it has arrived). Context is per turn, in memory, and is never stored. Nothing that was
+displayed is ever rewritten, and the turn is not re-translated at the end.
+
+| Setting | Value | Why |
+|---|---|---|
+| Deepgram `endpointing` | **400 ms** | Measured (below): 300 gave the lowest lag, 500+ was slower and less accurate. 400 avoids splitting on every 300 ms thinking pause in real speech. Override in the browser with `/converse?ep=300`. |
+| `pauseMs` (word-gap split) | **450 ms** | A silence this long between two words, from Deepgram's word timestamps, ends a phrase. Needed because `speech_final` is unreliable. Override with `?pause=`. |
+| `quietMs` | 900 ms | If nothing new was heard for this long and everything heard is final, emit the buffer. |
+| `maxWords` / `maxAgeMs` | 28 words / 8 s | A non-stop talker is cut at the next final so latency stays bounded. |
+| Merge rule | filler-only, or <= 2 words with no sentence ending | Held and merged into the next phrase (`holdMs` 2.5 s, or end of turn). "Yes." and "Sí." (with punctuation) are not held. |
+| Context | last 6 phrases | Enough for pronouns, gender and tense; keeps the prompt small. |
+| Stop tail | 300 ms | Keep capturing after the stop tap so the last syllable is not clipped. |
+
+Capitalization after a finished sentence is applied in code (`makeStartCaser`), not by prompting: asking the model to
+decide made it lowercase real sentence starts and drop pronouns.
+
+### Measurements (synthetic speech, one run per cell; indicative, not statistical)
+
+36 s English turn and 20 s Spanglish turn with deliberate 350-900 ms pauses, streamed in real time. Lag = time after the
+phrase's last word until the phrase was emitted.
+
+| endpointing | EN lag p50 / p95 | EN word error | ES lag p50 / p95 | ES word error |
+|---|---|---|---|---|
+| 300 ms | 0.53 s / 2.99 s | 2.4 % | 0.23 s / 0.42 s | 10.2 % |
+| 400 ms | 0.61 s / 5.12 s | 3.7 % | 0.26 s / 4.34 s | 10.2 % |
+| 500 ms | 0.74 s / 5.72 s | 6.1 % | 0.70 s / 5.17 s | 16.3 % |
+| 600 ms | 0.80 s / 5.86 s | 3.7 % | 0.69 s / 5.76 s | 12.2 % |
+
+Findings that shaped the design:
+
+- Deepgram's `speech_final` fired only 2-5 times on turns with 7+ real pauses, so it is one signal among several, not the boundary.
+- The p95 tail (3-6 s) comes from Deepgram holding a finalized result until the speaker resumes. Promoting stable
+  *interim* words to a phrase was tried and rejected: interims can pause over a second mid-sentence, which produced
+  fragments like "I want us" | "start with" and raised word error from ~4 % to 11 %.
+- Synthetic voices have digital silence between sentences and mangle some words; re-measure with real speakers using `?ep=`.
+
 ## Deploying (Railway)
 
 The app is one long-lived Next.js process (`pnpm build`, then `pnpm start`; see `railway.json`). Node 22.x, pnpm per

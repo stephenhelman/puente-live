@@ -1,20 +1,46 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Lang } from "@/engine";
 import { PHRASES, phraseText } from "./phrases";
 import { ERRORS, S } from "./strings";
 import type { WakeLockStatus } from "./useWakeLock";
-import { COUNTDOWN_FROM_SECONDS, type Conversation } from "./useConversation";
+import { COUNTDOWN_FROM_SECONDS, type Conversation, type ConvTurn, type Segment } from "./useConversation";
 import styles from "./converse.module.css";
 
 const VISIBLE_TURNS = 4;
 
+/**
+ * What the listener may see of a turn. Translations appear strictly in spoken order: a phrase is hidden until
+ * every earlier phrase has finished (or failed), so a fast later translation can never show up above a slow one.
+ */
+function visibleSegments(segments: Segment[]): Segment[] {
+  const out: Segment[] = [];
+  for (const s of segments) {
+    out.push(s);
+    if (s.status === "translating") break;
+  }
+  return out;
+}
+
+type Shown = { turn: ConvTurn; own: true; text: string; tail: string } | { turn: ConvTurn; own: false; segs: Segment[] };
+
+function shownFor(turn: ConvTurn, lang: Lang): Shown | null {
+  if (turn.speaker === lang) {
+    const text = turn.segments.map((s) => s.source).join(" ");
+    return text || turn.tail ? { turn, own: true, text, tail: turn.tail } : null;
+  }
+  const segs = visibleSegments(turn.segments);
+  return segs.length ? { turn, own: false, segs } : null;
+}
+
 /** One person's half of the screen, rendered entirely in that person's language. */
 export default function Half({ lang, conv, wake }: { lang: Lang; conv: Conversation; wake: WakeLockStatus }) {
-  const { phase, side, turns, interim, error, notice, secondsLeft } = conv;
+  const { phase, side, turns, error, notice, secondsLeft } = conv;
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
+  const historyRef = useRef<HTMLDivElement>(null);
+  const pinned = useRef(true); // follow the newest text unless the reader scrolled back up
   const t = (k: keyof typeof S) => S[k][lang];
 
   const mine = side === lang;
@@ -34,9 +60,18 @@ export default function Half({ lang, conv, wake }: { lang: Lang; conv: Conversat
     return { label: phase === "processing" ? t("waitOtherTranslating") : t("waitOtherSpeaking"), disabled: true };
   }
 
-  const visible = turns.slice(-VISIBLE_TURNS);
+  const visible = turns.map((t) => shownFor(t, lang)).filter((x): x is Shown => x !== null).slice(-VISIBLE_TURNS);
   const showError = error !== null;
-  const showHint = turns.length === 0 && !interim;
+  const showHint = visible.length === 0;
+  const newest = visible[visible.length - 1];
+  const newestChars = newest && !newest.own ? newest.segs.reduce((n, s) => n + s.translation.length, 0) : 0;
+  const sizeClass = newestChars > 260 ? styles.xlong : newestChars > 120 ? styles.long : "";
+
+  // Keep the newest text in view as phrases stream in, but never yank the view while someone reads older text.
+  useEffect(() => {
+    const el = historyRef.current;
+    if (el && pinned.current) el.scrollTop = el.scrollHeight;
+  });
 
   function onClear() {
     if (!confirmClear) {
@@ -74,28 +109,55 @@ export default function Half({ lang, conv, wake }: { lang: Lang; conv: Conversat
         </div>
       )}
 
-      <div className={styles.history} aria-live="polite">
+      <div
+        ref={historyRef}
+        className={styles.history}
+        aria-live="polite"
+        onScroll={(e) => {
+          const el = e.currentTarget;
+          pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+        }}
+      >
         {showHint && <p className={styles.hint}>{t("emptyHint")}</p>}
-        {visible.map((turn, i) => {
+        {visible.map((shown, i) => {
           const age = visible.length - 1 - i; // 0 = newest
-          const own = turn.speaker === lang;
           const cls = `${styles.item} ${age > 0 ? styles.older : ""}`;
-          if (own) {
+          if (shown.own) {
             return (
-              <p key={turn.id} className={`${cls} ${styles.own}`}>
+              <p key={shown.turn.id} className={`${cls} ${styles.own}`}>
                 <span className={styles.tag}>{t("youSaid")}: </span>
-                {turn.transcript}
+                {shown.turn.segments.map((seg) => (
+                  <span key={seg.id} data-src={seg.id}>
+                    {seg.source}{" "}
+                  </span>
+                ))}
+                {shown.tail && (
+                  <span className={styles.tail}>{shown.tail}</span>
+                )}
               </p>
             );
           }
+          const last = shown.segs[shown.segs.length - 1]!;
           return (
-            <p key={turn.id} className={`${cls} ${styles.theirs}`}>
-              {turn.translation || (turn.status === "translating" ? "…" : "")}
-              {turn.status === "translating" && turn.translation && <span className={styles.caret} aria-hidden />}
+            <p key={shown.turn.id} className={`${cls} ${styles.theirs} ${age === 0 ? sizeClass : ""}`}>
+              {shown.segs.map((seg) =>
+                seg.status === "error" ? (
+                  <span key={seg.id} className={styles.segError} role="alert">
+                    {t("phraseFailed")}{" "}
+                    <button type="button" onClick={() => conv.retrySegment(shown.turn.id, seg.id)} disabled={phase === "recording" || phase === "starting"}>
+                      {t("retry")}
+                    </button>{" "}
+                  </span>
+                ) : (
+                  <span key={seg.id} data-seg={seg.id}>
+                    {seg.translation || "…"}{" "}
+                  </span>
+                ),
+              )}
+              {last.status === "translating" && last.translation && <span className={styles.caret} aria-hidden />}
             </p>
           );
         })}
-        {recordingMine && interim && <p className={`${styles.item} ${styles.own} ${styles.live}`}>{interim}</p>}
 
       </div>
 

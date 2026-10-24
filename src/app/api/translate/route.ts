@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
-import { ClaudeTranslator, type Direction } from "@/engine";
+import { ClaudeTranslator, type ContextPair, type Direction } from "@/engine";
 import { requireEnv } from "@/lib/server/env";
 import { hasSession } from "@/lib/server/session";
 
 export const runtime = "nodejs";
 
 const MAX_CHARS = 4000;
+const MAX_CONTEXT_ITEMS = 8;
+const MAX_CONTEXT_CHARS = 1500;
 
 let translator: ClaudeTranslator | null = null;
 function getTranslator(): ClaudeTranslator {
@@ -24,19 +26,38 @@ function parseDirection(v: unknown): Direction | null {
 }
 
 /**
- * POST { text, direction, stream? }
+ * POST { text, direction, stream?, context? }   context = earlier phrases of the same turn (never stored)
  * - stream falsy: JSON TranslateResult (used by /debug).
  * - stream true: application/x-ndjson, one JSON object per line:
  *     {"t":"delta","text":"..."} ... then {"t":"done","result":{...}} or {"t":"error","message":"..."}
  */
+function parseContext(v: unknown): ContextPair[] | null {
+  if (v === undefined) return [];
+  if (!Array.isArray(v) || v.length > MAX_CONTEXT_ITEMS) return null;
+  const out: ContextPair[] = [];
+  for (const raw of v) {
+    const c = raw as Partial<ContextPair> | null;
+    if (!c || typeof c.source !== "string" || c.source.length > MAX_CONTEXT_CHARS) return null;
+    if (c.translation !== undefined && (typeof c.translation !== "string" || c.translation.length > MAX_CONTEXT_CHARS)) return null;
+    out.push({ source: c.source, translation: c.translation || undefined });
+  }
+  return out;
+}
+
 export async function POST(req: Request) {
   if (!(await hasSession())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const body = (await req.json().catch(() => null)) as { text?: unknown; direction?: unknown; stream?: unknown } | null;
+  const body = (await req.json().catch(() => null)) as {
+    text?: unknown;
+    direction?: unknown;
+    stream?: unknown;
+    context?: unknown;
+  } | null;
   const direction = parseDirection(body?.direction);
-  if (typeof body?.text !== "string" || !direction || body.text.length > MAX_CHARS) {
+  const context = parseContext(body?.context);
+  if (typeof body?.text !== "string" || !direction || !context || body.text.length > MAX_CHARS) {
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   }
-  const request = { text: body.text, direction };
+  const request = { text: body.text, direction, context };
 
   if (body.stream === true) {
     const enc = new TextEncoder();

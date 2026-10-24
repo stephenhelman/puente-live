@@ -21,7 +21,8 @@
 .errorActions button { font-size: max(16px, 2.6vmin); font-weight: 700; }
 .ghost { background: transparent !important; }
 
-.history { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: flex-end; gap: 10px; overflow: hidden; padding: 8px 0; -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 28px); mask-image: linear-gradient(to bottom, transparent 0, #000 28px); }
+.history { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; overscroll-behavior: contain; padding: 8px 0; -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 28px); mask-image: linear-gradient(to bottom, transparent 0, #000 28px); }
+.history > :first-child { margin-top: auto; } /* bottom-align short content while keeping overflow scrollable */
 .hint { margin: auto 0; text-align: center; font-size: clamp(1.2rem, 3.4vmin, 2.2rem); color: rgba(255,255,255,.8); }
 .item { margin: 0; overflow-wrap: anywhere; }
 .theirs { font-size: clamp(1.9rem, 6.2vmin, 4.6rem); font-weight: 650; line-height: 1.18; letter-spacing: .005em; }
@@ -29,7 +30,11 @@
 .tag { color: var(--accent); font-weight: 700; }
 .older { opacity: .62; }
 .older.theirs { font-size: clamp(1.3rem, 4vmin, 2.8rem); }
-.live { font-style: italic; }
+.tail { font-style: italic; opacity: .6; }
+.long { font-size: clamp(1.5rem, 4.8vmin, 3.4rem); }
+.xlong { font-size: clamp(1.25rem, 3.8vmin, 2.6rem); }
+.segError { display: inline-flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: clamp(1rem, 2.6vmin, 1.6rem); font-weight: 600; color: #ffb3b6; }
+.segError button { font-size: clamp(1rem, 2.6vmin, 1.5rem); font-weight: 700; }
 .caret { display: inline-block; width: .5ch; height: 1em; margin-left: 4px; background: var(--accent); vertical-align: -0.12em; animation: blink 1s steps(2, start) infinite; }
 
 .controls { display: flex; gap: 10px; flex: 0 0 clamp(92px, 26%, 210px); }

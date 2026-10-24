@@ -1,8 +1,21 @@
 import type { Direction } from "../types";
 
+/** An earlier phrase from the same turn, given to the model so the next phrase reads as a continuation. */
+export interface ContextPair {
+  /** What the speaker said. */
+  source: string;
+  /** What the listener has already been shown, if it has arrived yet. */
+  translation?: string;
+}
+
 export interface TranslateRequest {
   text: string;
   direction: Direction;
+  /**
+   * Phrase mode: earlier phrases of the SAME turn, oldest first. The model translates only `text`, continuing
+   * naturally from them, and never rewrites them. Per-turn only; callers must not persist it.
+   */
+  context?: ContextPair[];
 }
 
 export interface TranslateResult {

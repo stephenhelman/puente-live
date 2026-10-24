@@ -1,4 +1,4 @@
-import type { Direction } from "@/engine";
+import type { ContextPair, Direction } from "@/engine";
 import { hardNavigate } from "@/lib/nav";
 
 export class NetworkError extends Error {}
@@ -13,13 +13,14 @@ export async function streamTranslate(
   direction: Direction,
   onText: (soFar: string) => void,
   signal?: AbortSignal,
+  context?: ContextPair[],
 ): Promise<string> {
   let res: Response;
   try {
     res = await fetch("/api/translate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text, direction, stream: true }),
+      body: JSON.stringify({ text, direction, stream: true, context }),
       signal,
     });
   } catch (e) {

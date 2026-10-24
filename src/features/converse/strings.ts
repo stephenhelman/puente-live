@@ -26,6 +26,7 @@ export const S = {
     es: "Traducción con IA. No para situaciones clínicas, legales o de consentimiento.",
   },
   retry: { en: "Retry", es: "Reintentar" },
+  phraseFailed: { en: "This part could not be translated.", es: "No se pudo traducir esta parte." },
   dismiss: { en: "Dismiss", es: "Cerrar aviso" },
   noSpeech: { en: "I didn't hear anything. Please try again.", es: "No escuché nada. Intente de nuevo." },
   autoStop: { en: "Stopped after 60 seconds.", es: "Se detuvo después de 60 segundos." },
