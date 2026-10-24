@@ -1,7 +1,7 @@
 import { DeepgramSttProvider, type Direction, type SttResult, type SttSession, type SttWord, type TranslateResult } from "@/engine";
 import { STT_SAMPLE_RATE } from "@/features/audio/mic";
 import { hardNavigate } from "@/lib/nav";
-import { getDeepgramToken } from "./token";
+import { getDeepgramToken } from "@/features/audio/token";
 import type { Turn } from "./types";
 
 /** If Deepgram never answers a Finalize with from_finalize=true (it may skip it when little audio is buffered). */

@@ -1,0 +1,17 @@
+{
+  "note": "Placeholder phrases: edit freely. Keep ids unique. Each phrase is stored pre-translated; no API call is made when one is tapped.",
+  "phrases": [
+    { "id": "hello", "en": "Hello, welcome.", "es": "Hola, bienvenido." },
+    { "id": "thanks", "en": "Thank you very much.", "es": "Muchas gracias." },
+    { "id": "please-wait", "en": "One moment, please.", "es": "Un momento, por favor." },
+    { "id": "yes", "en": "Yes.", "es": "Sí." },
+    { "id": "no", "en": "No.", "es": "No." },
+    { "id": "dont-understand", "en": "I don't understand.", "es": "No entiendo." },
+    { "id": "repeat", "en": "Could you repeat that, please?", "es": "¿Podría repetirlo, por favor?" },
+    { "id": "slowly", "en": "Please speak more slowly.", "es": "Por favor, hable más despacio." },
+    { "id": "name", "en": "What is your name?", "es": "¿Cómo se llama?" },
+    { "id": "help", "en": "How can I help you?", "es": "¿En qué puedo ayudarle?" },
+    { "id": "restroom", "en": "Where is the restroom?", "es": "¿Dónde está el baño?" },
+    { "id": "need-help", "en": "I need help.", "es": "Necesito ayuda." }
+  ]
+}

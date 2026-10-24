@@ -48,8 +48,15 @@ cannot distinguish an expired token from a network failure, because the WebSocke
 ### Translator
 
 ```ts
-interface Translator { translate(req: { text: string; direction: Direction }): Promise<TranslateResult> }
+interface Translator {
+  translate(req: { text: string; direction: Direction }): Promise<TranslateResult>;
+  // Same translation, yielded as generated: zero or more { type: "delta", text }, then one { type: "done", result }.
+  // Errors are thrown. Abort with opts.signal. result.firstDeltaMs is the time to the first text.
+  translateStream(req, opts?: { signal?: AbortSignal }): AsyncGenerator<TranslateStreamEvent>;
+}
 ```
+
+`/api/translate` exposes both: JSON by default, NDJSON (`{"t":"delta"|"done"|"error"}` per line) with `stream: true`.
 
 `ClaudeTranslator` calls the Messages API with `fetch`. The system prompt (rules + glossary) is a single
 `cache_control: ephemeral` block; direction goes in the user turn so the cached prefix is identical across directions.

@@ -6,7 +6,7 @@
 export * from "./types";
 export type { SttProvider, SttSession, SttStartOptions, SttResult, SttWord } from "./stt/types";
 export { DeepgramSttProvider, mintDeepgramToken, buildListenUrl } from "./stt/deepgram";
-export type { Translator, TranslateRequest, TranslateResult } from "./translate/types";
+export type { Translator, TranslateRequest, TranslateResult, TranslateStreamEvent } from "./translate/types";
 export { ClaudeTranslator, DEFAULT_TRANSLATE_MODEL } from "./translate/claude";
 export type { Glossary, GlossaryEntry } from "./glossary";
 export { loadDefaultGlossary } from "./glossary";
