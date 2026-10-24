@@ -1,0 +1,22 @@
+:root { color-scheme: dark; --bg:#0d1117; --fg:#e6edf3; --muted:#8b949e; --panel:#161b22; --line:#30363d; --accent:#2f81f7; --ok:#3fb950; --err:#f85149; }
+* { box-sizing: border-box; }
+body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.45 system-ui,-apple-system,sans-serif; }
+button,select,input { font:inherit; color:inherit; background:#21262d; border:1px solid var(--line); border-radius:8px; padding:8px 12px; }
+button { cursor:pointer; } button:disabled { opacity:.45; cursor:default; }
+.muted { color:var(--muted); } .ok { color:var(--ok); } .err { color:var(--err); }
+.gate { min-height:100dvh; display:grid; place-items:center; }
+.gate form { display:grid; gap:12px; width:min(320px,90vw); }
+.debug { max-width:900px; margin:0 auto; padding:16px; }
+.panel { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:12px; margin:12px 0; }
+.row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin:10px 0; } .spread { justify-content:space-between; }
+.ptt { flex:1 1 220px; min-height:96px; font-size:18px; font-weight:600; touch-action:none; user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; }
+.ptt.held { background:var(--accent); border-color:var(--accent); }
+.stats { width:100%; border-collapse:collapse; } .stats th,.stats td { text-align:left; padding:4px 8px; border-bottom:1px solid var(--line); }
+.turn { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:12px; margin:12px 0; }
+.turn.error { border-color:var(--err); } .turn p { margin:4px 0; }
+.label { color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:.04em; margin-top:10px !important; }
+.big { font-size:22px; }
+.words { display:flex; flex-wrap:wrap; gap:4px; }
+.w { padding:1px 6px; border-radius:6px; background:#21262d; } .w sub { font-size:10px; margin-left:3px; color:var(--muted); }
+.w.lang-en { box-shadow:inset 0 -2px #2f81f7; } .w.lang-es { box-shadow:inset 0 -2px #d29922; }
+.metrics { color:var(--muted); font-size:12px; }
