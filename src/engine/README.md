@@ -134,6 +134,46 @@ Findings that shaped the design:
   fragments like "I want us" | "start with" and raised word error from ~4 % to 11 %.
 - Synthetic voices have digital silence between sentences and mangle some words; re-measure with real speakers using `?ep=`.
 
+## Meeting mode (`/meeting`)
+
+Two independent sources (the meeting's audio via `getDisplayMedia`, and optionally the mic), each with its own long-lived
+Deepgram socket, `PhraseSegmenter` and translation context. Engine additions, all behind `@/engine`:
+
+- `startContinuousStt(provider, opts)` (`stt/continuous.ts`): one stream that survives socket drops. On close it calls
+  `onDrop` (the caller flushes open phrases, because the new socket's word clock restarts at 0), reconnects with backoff
+  (300 ms to 8 s; the provider mints a fresh token on its retry, and `getToken` re-mints once the cached one ages out), keeps
+  the last 20 s of audio and replays it. A watchdog reconnects if no result arrives for 15 s while audio flows (Deepgram sends
+  empty results through silence, measured gaps <= 2 s). Gives up after 2 min down (`status: "failed"`). The first connect
+  failing is thrown, not retried.
+- `keepAliveMs` on `SttStartOptions`: the provider sends `{"type":"KeepAlive"}` when no audio went out for that long
+  (Deepgram closes after ~10 s of neither). Audio normally flows continuously, so this is a safety net.
+- `detectLang(words, text, fallback)`: majority of Deepgram's per-word `language` tags (English and Spanish only; other
+  languages ignored). Tie or no tags: stopword/accent guess, then the previous phrase's language from the same source, then English.
+  `directionFor(lang)` maps English to Spanish and Spanish to English.
+- `PhraseSegmenter` now passes `PhraseInfo { words, endSec }` as a second callback argument (converse ignores it).
+
+**Endpointing in continuous mode: unchanged** (400 ms, `pauseMs` 450, `quietMs` 900, 28 words / 8 s). Reasoning: it is a
+conversation-style boundary already, the phrase boundary is driven by word-timestamp gaps rather than a push-to-talk
+button, and I have no real-meeting measurements to justify a different value (the table above came from synthetic speech;
+see the meeting numbers below). Tune in the field with `/meeting?ep=&pause=`; `?max=` sets the session cap in minutes
+(default 180, warning 10 min before the end). Context sent to the translator is the last 6 phrases from the same source in
+the same direction.
+
+### Meeting measurements (synthetic speech, real Deepgram + Claude Haiku 5.5, two concurrent streams, one forced socket drop)
+
+25 phrases, ~70 s per stream, played in real time. Lag is measured from the speaker's last word (Deepgram word end mapped to
+the local clock). Excludes the browser-to-server hop, which is one extra request inside the same region.
+
+| Stage | p50 | p95 |
+|---|---|---|
+| Phrase emitted by the segmenter | 0.60 s | 1.56 s |
+| First translated text | 1.64 s | 3.43 s |
+| Translation finished | 1.97 s | 3.55 s |
+
+A second run (one stream, ending in 20 s of silence) gave 0.89 / 3.11 s emit and 2.02 / 4.58 s done, so p95 ranges 3.5-4.6 s and
+n is small. Language detection used word tags for 25 of 26 phrases. The forced drop reconnected and continued (reconnects=1).
+`/meeting?debug=1` shows the same percentiles live for a real session.
+
 ## Deploying (Railway)
 
 The app is one long-lived Next.js process (`pnpm build`, then `pnpm start`; see `railway.json`). Node 22.x, pnpm per

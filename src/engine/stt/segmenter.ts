@@ -31,6 +31,14 @@ export const DEFAULT_SEGMENTER_OPTIONS: SegmenterOptions = {
 const FILLERS = new Set(["um", "umm", "uh", "uhh", "er", "erm", "ah", "eh", "hmm", "mm", "mmm", "hm", "este", "pues", "eh,", "o sea"]);
 const TERMINAL = /[.?!…]["')»\]]*$/;
 
+/** What the segmenter knows about an emitted phrase beyond its text. */
+export interface PhraseInfo {
+  /** The vendor's words for this phrase (empty if the text arrived without word detail). */
+  words: SttWord[];
+  /** Vendor clock (seconds since its stream began) at the end of the last word; undefined without word detail. */
+  endSec?: number;
+}
+
 const wordsOf = (t: string) => t.trim().split(/\s+/).filter(Boolean);
 const bare = (w: string) => w.toLowerCase().replace(/[.,;:!?¡¿…"'()]/g, "");
 
@@ -49,6 +57,7 @@ export function isHoldable(text: string): boolean {
  */
 export class PhraseSegmenter {
   private buf = "";
+  private bufWords: SttWord[] = [];
   private firstAt = 0;
   private holdTimer: ReturnType<typeof setTimeout> | null = null;
   private quietTimer: ReturnType<typeof setTimeout> | null = null;
@@ -59,7 +68,7 @@ export class PhraseSegmenter {
   private disposed = false;
 
   constructor(
-    private readonly onPhrase: (text: string) => void,
+    private readonly onPhrase: (text: string, info: PhraseInfo) => void,
     private readonly opts: SegmenterOptions = DEFAULT_SEGMENTER_OPTIONS,
     private readonly now: () => number = () => Date.now(),
   ) {}
@@ -91,6 +100,7 @@ export class PhraseSegmenter {
     for (const w of words) {
       if (this.buf && this.lastEnd >= 0 && (w.start - this.lastEnd) * 1000 >= this.opts.pauseMs) this.tryEmit();
       this.append(w.word);
+      this.bufWords.push(w);
       this.lastEnd = w.end;
     }
   }
@@ -112,6 +122,7 @@ export class PhraseSegmenter {
     this.clearHold();
     this.clearQuiet();
     this.buf = "";
+    this.bufWords = [];
   }
 
   private append(text: string) {
@@ -132,9 +143,12 @@ export class PhraseSegmenter {
   private emit() {
     this.clearHold();
     const text = this.buf.trim();
+    const words = this.bufWords;
+    const endSec = this.lastEnd >= 0 ? this.lastEnd : undefined;
     this.buf = "";
-    this.lastEnd = -1;
-    if (text && !this.disposed) this.onPhrase(text);
+    this.bufWords = [];
+    this.lastEnd = -1; // also what makes a vendor-clock restart (reconnect) safe: flush() first, then new words
+    if (text && !this.disposed) this.onPhrase(text, { words, endSec });
   }
 
   private armQuiet() {

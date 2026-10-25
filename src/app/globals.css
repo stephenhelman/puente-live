@@ -20,3 +20,8 @@ button { cursor:pointer; } button:disabled { opacity:.45; cursor:default; }
 .w { padding:1px 6px; border-radius:6px; background:#21262d; } .w sub { font-size:10px; margin-left:3px; color:var(--muted); }
 .w.lang-en { box-shadow:inset 0 -2px #2f81f7; } .w.lang-es { box-shadow:inset 0 -2px #d29922; }
 .metrics { color:var(--muted); font-size:12px; }
+.landing { display:grid; gap:14px; width:min(560px,92vw); }
+.landing h1 { margin:0; }
+.mode { display:grid; gap:4px; padding:16px; border:2px solid var(--line); border-radius:14px; background:var(--panel); color:var(--fg); text-decoration:none; font-size:17px; }
+.mode:hover, .mode:focus-visible { border-color:var(--accent); outline:none; }
+.mode span { color:var(--muted); font-size:14px; }

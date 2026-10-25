@@ -30,6 +30,11 @@ export interface SttStartOptions {
    */
   getToken: (opts: { forceRefresh: boolean }) => Promise<string>;
   sampleRate: number;
+  /**
+   * If set, the provider sends the vendor's keep-alive whenever no audio has been sent for this long, so a quiet or
+   * paused source does not get its socket closed for inactivity.
+   */
+  keepAliveMs?: number;
   /** Silence in ms before the vendor emits speechFinal. */
   endpointingMs: number;
   onResult: (r: SttResult) => void;

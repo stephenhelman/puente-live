@@ -111,16 +111,43 @@ export class DeepgramSttProvider implements SttProvider {
     ws.onerror = () => opts.onError(new Error("Deepgram WebSocket error"));
     ws.onclose = (e) => opts.onClose({ code: e.code, reason: e.reason });
 
+    // Deepgram closes a socket that receives neither audio nor a KeepAlive message for ~10 s.
+    let lastSendAt = performance.now();
+    let keepAliveTimer: ReturnType<typeof setInterval> | null = null;
+    const stopKeepAlive = () => {
+      if (keepAliveTimer) clearInterval(keepAliveTimer);
+      keepAliveTimer = null;
+    };
+    if (opts.keepAliveMs && opts.keepAliveMs > 0) {
+      const every = opts.keepAliveMs;
+      keepAliveTimer = setInterval(() => {
+        if (ws.readyState !== WebSocket.OPEN) return;
+        if (performance.now() - lastSendAt >= every) {
+          ws.send(JSON.stringify({ type: "KeepAlive" }));
+          lastSendAt = performance.now();
+        }
+      }, Math.max(500, Math.floor(every / 2)));
+    }
+    const onCloseUser = ws.onclose;
+    ws.onclose = (e) => {
+      stopKeepAlive();
+      onCloseUser?.call(ws, e);
+    };
+
     return {
       connectMs,
       usedTokenRetry,
       sendAudio(pcm) {
-        if (ws.readyState === WebSocket.OPEN) ws.send(pcm);
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(pcm);
+          lastSendAt = performance.now();
+        }
       },
       finalize() {
         if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "Finalize" }));
       },
       close() {
+        stopKeepAlive();
         if (ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({ type: "CloseStream" }));
           ws.close(1000);

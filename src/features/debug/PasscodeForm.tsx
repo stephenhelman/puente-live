@@ -18,7 +18,7 @@ export default function PasscodeForm() {
       body: JSON.stringify({ passcode }),
     });
     if (res.ok) {
-      hardNavigate("/converse");
+      hardNavigate("/");
       return;
     }
     const body = (await res.json().catch(() => ({}))) as { error?: string };
