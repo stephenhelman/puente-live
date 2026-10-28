@@ -25,6 +25,12 @@ export interface TranslateResult {
   latencyMs: number;
   /** Streaming only: time from request to the first text delta, ms. */
   firstDeltaMs?: number;
+  /** Fragments the leak filter removed from the model's output (meta-commentary, a repeated previous phrase). */
+  leaks?: string[];
+  /** Why the model stopped. Anything but a normal end means the text was retried or is suspect. */
+  stopReason?: string;
+  /** True when the first attempt was cut off or incomplete and this text comes from a retry. */
+  retried?: boolean;
   usage?: {
     inputTokens: number;
     outputTokens: number;

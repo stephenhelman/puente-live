@@ -13,6 +13,10 @@ export async function openPcmTap(stream: MediaStream): Promise<PcmTap> {
   const ctx = new AudioContext();
   await ctx.audioWorklet.addModule("/pcm-worklet.js");
   if (ctx.state === "suspended") await ctx.resume();
+  // Chrome can suspend an AudioContext it considers idle or interrupted; captions would silently stall. Always resume.
+  ctx.onstatechange = () => {
+    if (ctx.state === "suspended") void ctx.resume().catch(() => {});
+  };
   const src = ctx.createMediaStreamSource(new MediaStream(stream.getAudioTracks()));
   const node = new AudioWorkletNode(ctx, "pcm-capture");
   const mute = ctx.createGain(); // keeps the graph pulled without making a sound
@@ -22,6 +26,7 @@ export async function openPcmTap(stream: MediaStream): Promise<PcmTap> {
     onChunk: null,
     dispose() {
       tap.onChunk = null;
+      ctx.onstatechange = null;
       node.port.onmessage = null;
       src.disconnect();
       node.disconnect();

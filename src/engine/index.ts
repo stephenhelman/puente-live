@@ -12,7 +12,8 @@ export {
   type SegmenterOptions,
   type PhraseInfo,
 } from "./stt/segmenter";
-export { detectLang, directionFor, normalizeLang } from "./stt/language";
+export { detectLang, directionFor, normalizeLang, classifyPhrase, isAlreadyIn, textScores, type PhraseVerdict } from "./stt/language";
+export { GLOBAL_TIMERS, type Timers } from "./stt/timers";
 export {
   startContinuousStt,
   type ContinuousSttOptions,
@@ -22,5 +23,6 @@ export {
 export { DeepgramSttProvider, mintDeepgramToken, buildListenUrl } from "./stt/deepgram";
 export type { Translator, TranslateRequest, TranslateResult, ContextPair, TranslateStreamEvent } from "./translate/types";
 export { ClaudeTranslator, DEFAULT_TRANSLATE_MODEL } from "./translate/claude";
+export { cleanTranslation, stripLeaks, stripRepeatedPrefix, type Cleaned } from "./translate/leak";
 export type { Glossary, GlossaryEntry } from "./glossary";
-export { loadDefaultGlossary } from "./glossary";
+export { loadDefaultGlossary, glossaryKeyterms } from "./glossary";

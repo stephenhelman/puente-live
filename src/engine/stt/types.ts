@@ -37,6 +37,10 @@ export interface SttStartOptions {
   keepAliveMs?: number;
   /** Silence in ms before the vendor emits speechFinal. */
   endpointingMs: number;
+  /** Languages to bias language=multi toward (bias only; the vendor can still return others). */
+  languageHints?: string[];
+  /** Spellings the recognizer should favour (domain vocabulary). */
+  keyterms?: string[];
   onResult: (r: SttResult) => void;
   onError: (e: Error) => void;
   onClose: (info: { code: number; reason: string }) => void;

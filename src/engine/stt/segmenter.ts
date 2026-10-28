@@ -1,3 +1,4 @@
+import { GLOBAL_TIMERS, type Timers } from "./timers";
 import type { SttResult, SttWord } from "./types";
 
 export interface SegmenterOptions {
@@ -35,6 +36,8 @@ const TERMINAL = /[.?!…]["')»\]]*$/;
 export interface PhraseInfo {
   /** The vendor's words for this phrase (empty if the text arrived without word detail). */
   words: SttWord[];
+  /** Vendor clock (seconds since its stream began) at the start of the first word: when the phrase began being SPOKEN. */
+  startSec?: number;
   /** Vendor clock (seconds since its stream began) at the end of the last word; undefined without word detail. */
   endSec?: number;
 }
@@ -59,8 +62,11 @@ export class PhraseSegmenter {
   private buf = "";
   private bufWords: SttWord[] = [];
   private firstAt = 0;
-  private holdTimer: ReturnType<typeof setTimeout> | null = null;
-  private quietTimer: ReturnType<typeof setTimeout> | null = null;
+  private holdTimer: number | null = null;
+  private quietTimer: number | null = null;
+  /** Wall time the hold / the last heard text began; lets push() enforce both even if a timer was throttled. */
+  private holdAt = 0;
+  private heardAt = 0;
   private lastTextWasFinal = true;
 
   /** End time (seconds, vendor clock) of the last word in the buffer. */
@@ -71,6 +77,7 @@ export class PhraseSegmenter {
     private readonly onPhrase: (text: string, info: PhraseInfo) => void,
     private readonly opts: SegmenterOptions = DEFAULT_SEGMENTER_OPTIONS,
     private readonly now: () => number = () => Date.now(),
+    private readonly timers: Timers = GLOBAL_TIMERS,
   ) {}
 
   /** Text that has been finalized but not yet emitted as a phrase. */
@@ -80,7 +87,9 @@ export class PhraseSegmenter {
 
   push(r: SttResult) {
     if (this.disposed) return;
+    this.tick();
     if (r.text.trim()) {
+      this.heardAt = this.now();
       this.lastTextWasFinal = r.isFinal;
       this.armQuiet();
     }
@@ -93,6 +102,16 @@ export class PhraseSegmenter {
     if (!this.buf) return;
     const tooLong = wordsOf(this.buf).length >= this.opts.maxWords || this.now() - this.firstAt >= this.opts.maxAgeMs;
     if (r.speechFinal || tooLong) this.tryEmit();
+  }
+
+  /**
+   * Enforces the hold and quiet deadlines from the clock. Called for every vendor result (they keep arriving, empty,
+   * through silence), so a phrase is never stuck behind a timer the browser delayed in a background window.
+   */
+  private tick() {
+    const t = this.now();
+    if (this.holdTimer !== null && t - this.holdAt >= this.opts.holdMs) this.emit();
+    else if (this.buf && this.lastTextWasFinal && this.holdTimer === null && t - this.heardAt >= this.opts.quietMs) this.tryEmit();
   }
 
   /** Word by word, ending the current phrase wherever the timestamps show a real pause. */
@@ -134,7 +153,8 @@ export class PhraseSegmenter {
   private tryEmit() {
     if (isHoldable(this.buf)) {
       this.clearHold();
-      this.holdTimer = setTimeout(() => this.emit(), this.opts.holdMs);
+      this.holdAt = this.now();
+      this.holdTimer = this.timers.setTimeout(() => this.emit(), this.opts.holdMs);
       return;
     }
     this.emit();
@@ -145,27 +165,29 @@ export class PhraseSegmenter {
     const text = this.buf.trim();
     const words = this.bufWords;
     const endSec = this.lastEnd >= 0 ? this.lastEnd : undefined;
+    const startSec = words[0]?.start;
     this.buf = "";
     this.bufWords = [];
     this.lastEnd = -1; // also what makes a vendor-clock restart (reconnect) safe: flush() first, then new words
-    if (text && !this.disposed) this.onPhrase(text, { words, endSec });
+    if (text && !this.disposed) this.onPhrase(text, { words, startSec, endSec });
   }
 
   private armQuiet() {
     this.clearQuiet();
-    this.quietTimer = setTimeout(() => {
+    this.quietTimer = this.timers.setTimeout(() => {
+      this.quietTimer = null;
       // Only when the last thing we heard was final: otherwise words are still waiting to be finalized.
       if (this.buf && this.lastTextWasFinal) this.tryEmit();
     }, this.opts.quietMs);
   }
 
   private clearQuiet() {
-    if (this.quietTimer) clearTimeout(this.quietTimer);
+    if (this.quietTimer !== null) this.timers.clearTimeout(this.quietTimer);
     this.quietTimer = null;
   }
 
   private clearHold() {
-    if (this.holdTimer) clearTimeout(this.holdTimer);
+    if (this.holdTimer !== null) this.timers.clearTimeout(this.holdTimer);
     this.holdTimer = null;
   }
 }

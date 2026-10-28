@@ -3,12 +3,35 @@ export type SourceId = "meeting" | "you";
 export interface CaptionEntry {
   id: number;
   source: SourceId;
-  /** Wall-clock ms when the phrase was finalized. */
+  /** Wall-clock ms when the phrase was SPOKEN (Deepgram's first-word start time), not when it was transcribed or translated. */
   at: number;
   lang: "en" | "es";
   original: string;
   translation: string;
   status: "translating" | "done" | "error";
+  /**
+   * already: the phrase was already in the target language, so `translation` is the original (no API call).
+   * untranslated: the translator returned nothing twice, so `translation` is the original.
+   */
+  note?: "already" | "untranslated";
+}
+
+const TARGET_NAME = { en: "English", es: "Spanish" } as const;
+
+/** What to print as the translation line of the transcript. Never blank. */
+export function translationText(e: CaptionEntry): string {
+  if (e.status === "error") return "(not translated)";
+  if (e.note === "already") {
+    const target = e.lang === "en" ? "es" : "en";
+    return `${e.original} (already in ${TARGET_NAME[target]})`;
+  }
+  if (e.note === "untranslated") return `${e.original} (untranslated)`;
+  return e.translation || "(not translated)";
+}
+
+/** Entries by spoken time. Stable, so same-instant phrases keep their arrival order. */
+export function bySpokenTime(entries: CaptionEntry[]): CaptionEntry[] {
+  return entries.map((e, i) => ({ e, i })).sort((a, b) => a.e.at - b.e.at || a.i - b.i).map((x) => x.e);
 }
 
 const LABEL: Record<SourceId, string> = { meeting: "Meeting", you: "You" };
@@ -26,23 +49,25 @@ function header(startedAt: number): string {
   return `Puente Live meeting transcript - ${new Date(startedAt).toLocaleString()}`;
 }
 
-export function toText(entries: CaptionEntry[]): string {
+export function toText(all: CaptionEntry[]): string {
+  const entries = bySpokenTime(all);
   const first = entries[0]?.at ?? Date.now();
   const body = entries
     .map(
       (e) =>
-        `[${clock(e.at)}] ${LABEL[e.source]} (${LANG[e.lang]})\n  ${e.original}\n  -> ${e.status === "error" ? "(not translated)" : e.translation}`,
+        `[${clock(e.at)}] ${LABEL[e.source]} (${LANG[e.lang]})\n  ${e.original}\n  -> ${translationText(e)}`,
     )
     .join("\n\n");
   return `${header(first)}\n${NOTE}\n\n${body}\n`;
 }
 
-export function toMarkdown(entries: CaptionEntry[]): string {
+export function toMarkdown(all: CaptionEntry[]): string {
+  const entries = bySpokenTime(all);
   const first = entries[0]?.at ?? Date.now();
   const body = entries
     .map(
       (e) =>
-        `**${clock(e.at)} · ${LABEL[e.source]}** _(${LANG[e.lang]})_\n\n> ${e.original}\n\n${e.status === "error" ? "_(not translated)_" : e.translation}`,
+        `**${clock(e.at)} · ${LABEL[e.source]}** _(${LANG[e.lang]})_\n\n> ${e.original}\n\n${e.status === "error" ? "_(not translated)_" : translationText(e)}`,
     )
     .join("\n\n---\n\n");
   return `# ${header(first)}\n\n_${NOTE}_\n\n${body}\n`;

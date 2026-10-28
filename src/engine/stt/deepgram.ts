@@ -2,8 +2,17 @@ import type { SttProvider, SttResult, SttSession, SttStartOptions, SttWord } fro
 
 const DEEPGRAM_LISTEN_URL = "wss://api.deepgram.com/v1/listen";
 
-/** Query params for Nova-3 with code-switching. See README "Chosen values". */
-export function buildListenUrl(opts: { sampleRate: number; endpointingMs: number }): string {
+/**
+ * Query params for Nova-3 with code-switching. See README "Chosen values".
+ * `languageHints` (language_hint, repeatable) bias language=multi toward those languages but do NOT restrict it.
+ * `keyterms` (keyterm, repeatable) boost the recognition of those spellings; Deepgram allows 500 tokens in total.
+ */
+export function buildListenUrl(opts: {
+  sampleRate: number;
+  endpointingMs: number;
+  languageHints?: string[];
+  keyterms?: string[];
+}): string {
   const q = new URLSearchParams({
     model: "nova-3",
     language: "multi", // en/es code-switching within one utterance
@@ -15,6 +24,8 @@ export function buildListenUrl(opts: { sampleRate: number; endpointingMs: number
     punctuate: "true",
     endpointing: String(opts.endpointingMs),
   });
+  for (const h of opts.languageHints ?? []) q.append("language_hint", h);
+  for (const k of opts.keyterms ?? []) q.append("keyterm", k);
   return `${DEEPGRAM_LISTEN_URL}?${q.toString()}`;
 }
 
@@ -82,7 +93,8 @@ function openSocket(url: string, token: string): Promise<WebSocket> {
 
 export class DeepgramSttProvider implements SttProvider {
   async start(opts: SttStartOptions): Promise<SttSession> {
-    const url = buildListenUrl({ sampleRate: opts.sampleRate, endpointingMs: opts.endpointingMs });
+    const base = { sampleRate: opts.sampleRate, endpointingMs: opts.endpointingMs };
+    const url = buildListenUrl({ ...base, languageHints: opts.languageHints, keyterms: opts.keyterms });
     const t0 = performance.now();
     let usedTokenRetry = false;
     let ws: WebSocket;
@@ -92,7 +104,14 @@ export class DeepgramSttProvider implements SttProvider {
       // A browser cannot tell an expired token from a network blip, so retry once with a fresh token.
       usedTokenRetry = true;
       try {
-        ws = await openSocket(url, await opts.getToken({ forceRefresh: true }));
+        const token = await opts.getToken({ forceRefresh: true });
+        try {
+          ws = await openSocket(url, token);
+        } catch (second) {
+          // Last resort: if the optional hints/keyterms were what the vendor rejected, captions without them beat none.
+          if (!opts.languageHints?.length && !opts.keyterms?.length) throw second;
+          ws = await openSocket(buildListenUrl(base), token);
+        }
       } catch {
         throw first instanceof Error ? first : new Error(String(first));
       }

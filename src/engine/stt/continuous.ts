@@ -1,3 +1,4 @@
+import { GLOBAL_TIMERS, type Timers } from "./timers";
 import type { SttProvider, SttResult, SttSession } from "./types";
 
 export type ContinuousStatus = "live" | "reconnecting" | "failed";
@@ -6,6 +7,13 @@ export interface ContinuousSttOptions {
   getToken: (opts: { forceRefresh: boolean }) => Promise<string>;
   sampleRate: number;
   endpointingMs: number;
+  languageHints?: string[];
+  keyterms?: string[];
+  /**
+   * Timer functions. Browsers throttle setTimeout/setInterval in a hidden or occluded window (down to once a minute);
+   * a Worker-backed implementation is not throttled. Defaults to the globals.
+   */
+  timers?: Timers;
   /** Vendor keep-alive cadence while no audio is flowing. Default 4000. */
   keepAliveMs?: number;
   /** Audio kept while the socket is down and replayed once it is back, ms. Default 20000. */
@@ -67,6 +75,8 @@ export async function startContinuousStt(provider: SttProvider, opts: Continuous
       getToken: opts.getToken,
       sampleRate: opts.sampleRate,
       endpointingMs: opts.endpointingMs,
+      languageHints: opts.languageHints,
+      keyterms: opts.keyterms,
       keepAliveMs: opts.keepAliveMs ?? 4000,
       onResult: (r) => {
         if (gen !== generation || closed) return;
@@ -83,11 +93,12 @@ export async function startContinuousStt(provider: SttProvider, opts: Continuous
     });
   };
 
+  const timers = opts.timers ?? GLOBAL_TIMERS;
   const sleep = (ms: number) =>
     new Promise<void>((resolve) => {
-      const t = setTimeout(resolve, ms);
+      const t = timers.setTimeout(resolve, ms);
       wake = () => {
-        clearTimeout(t);
+        timers.clearTimeout(t);
         resolve();
       };
     });
@@ -136,7 +147,7 @@ export async function startContinuousStt(provider: SttProvider, opts: Continuous
   // Deepgram sends (empty) results even through silence (measured: gaps <= 2 s), so a long gap while audio flows means
   // a half-open socket that never reported a close.
   const stallMs = opts.stallMs ?? 15_000;
-  const watchdog = setInterval(() => {
+  const watchdog = timers.setInterval(() => {
     if (closed || reconnecting || !session) return;
     const now = Date.now();
     if (now - lastResultAt > stallMs && now - lastAudioAt < 2000) {
@@ -168,7 +179,7 @@ export async function startContinuousStt(provider: SttProvider, opts: Continuous
     close() {
       if (closed) return;
       closed = true;
-      clearInterval(watchdog);
+      timers.clearInterval(watchdog);
       generation++;
       wake?.();
       session?.close();

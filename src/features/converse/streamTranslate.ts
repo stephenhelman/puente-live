@@ -14,6 +14,8 @@ export async function streamTranslate(
   onText: (soFar: string) => void,
   signal?: AbortSignal,
   context?: ContextPair[],
+  /** Called once with the server's final result details (e.g. which leaked fragments were stripped). */
+  onResult?: (r: { leaks?: string[]; retried?: boolean; stopReason?: string }) => void,
 ): Promise<string> {
   let res: Response;
   try {
@@ -50,13 +52,14 @@ export async function streamTranslate(
         if (!line) continue;
         const ev = JSON.parse(line) as
           | { t: "delta"; text: string }
-          | { t: "done"; result: { text: string } }
+          | { t: "done"; result: { text: string; leaks?: string[]; retried?: boolean; stopReason?: string } }
           | { t: "error"; message: string };
         if (ev.t === "delta") {
           acc += ev.text;
           onText(acc.trimStart());
         } else if (ev.t === "done") {
           final = ev.result.text;
+          onResult?.(ev.result);
         } else {
           throw new TranslateFailed(ev.message);
         }

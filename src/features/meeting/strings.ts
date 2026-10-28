@@ -6,6 +6,13 @@ export interface Bi {
 }
 
 export const M = {
+  alreadyEn: { en: "(already in English)", es: "(ya está en inglés)" },
+  alreadyEs: { en: "(already in Spanish)", es: "(ya está en español)" },
+  untranslated: { en: "(untranslated)", es: "(sin traducir)" },
+  throttled: {
+    en: "Captions may have paused: this window was slowed down by the browser. Keep this window visible (side by side with Zoom, not behind it).",
+    es: "Los subtítulos pudieron pausarse: el navegador ralentizó esta ventana. Mantenga esta ventana visible (junto a Zoom, no detrás).",
+  },
   title: { en: "Meeting translation", es: "Traducción de reuniones" },
   start: { en: "Start", es: "Comenzar" },
   starting: { en: "Starting…", es: "Iniciando…" },

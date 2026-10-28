@@ -62,3 +62,4 @@
 
 @media (max-width: 420px) { .top { padding: 8px 10px; } .feed { padding: 10px; } }
 @media (prefers-reduced-motion: no-preference) { .interim { transition: opacity .15s; } }
+.note { font-size: .55em; font-weight: 500; color: #8b949e; font-style: italic; }

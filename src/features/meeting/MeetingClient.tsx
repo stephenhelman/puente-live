@@ -107,6 +107,7 @@ function MeetingScreen() {
           <SourceBar sources={m.sources} />
           {m.useMic && <p className={styles.hint}><B t={M.headphones} /></p>}
           {warn && <p className={styles.warn} role="status"><B t={M.warnSoon} /></p>}
+          {debug && live && m.debugInfo.throttleEvents > 0 && <p className={styles.warn} role="alert"><B t={M.throttled} /></p>}
           <ErrorBanner m={m} />
         </header>
       )}
@@ -261,6 +262,20 @@ function Entry({ e, presenting, onRetry }: { e: CaptionEntry; presenting: boolea
       ) : (
         <p className={`${styles.trans} ${e.status === "translating" ? styles.interim : ""}`} lang={e.lang === "en" ? "es" : "en"}>
           {e.translation || "…"}
+          {e.note && (
+            <>
+              {" "}
+              <span className={styles.note}>
+                <B t={e.note === "untranslated" ? M.untranslated : e.lang === "en" ? M.alreadyEs : M.alreadyEn} />
+              </span>
+              {e.note === "untranslated" && !presenting && (
+                <>
+                  {" "}
+                  <button type="button" className={styles.btn} onClick={onRetry}><B t={M.retry} /></button>
+                </>
+              )}
+            </>
+          )}
         </p>
       )}
     </article>
@@ -270,9 +285,22 @@ function Entry({ e, presenting, onRetry }: { e: CaptionEntry; presenting: boolea
 function LatencyLine({ m }: { m: Meeting }) {
   const f = (v: number | null) => (v === null ? "-" : `${(v / 1000).toFixed(2)}s`);
   const s = m.stats;
+  const d = m.debugInfo;
   return (
     <p className={styles.debug}>
-      n={s.n} · phrase p50/p95 {f(s.phraseP50)}/{f(s.phraseP95)} · first text {f(s.firstP50)}/{f(s.firstP95)} · done {f(s.doneP50)}/{f(s.doneP95)}
+      n={s.n} · phrase p50/p95/max {f(s.phraseP50)}/{f(s.phraseP95)}/{f(s.phraseMax)} · first text {f(s.firstP50)}/{f(s.firstP95)}/{f(s.firstMax)} · done {f(s.doneP50)}/{f(s.doneP95)}/{f(s.doneMax)}
+      <br />
+      max delay speech end → caption {f(s.firstMax)} (phrase {f(s.phraseMax)}) · throttled {d.throttleEvents}× (worst tick gap {f(d.maxTickGapMs)}, hidden {f(d.hiddenMs)}) · audio gap max {d.maxChunkGapMs.toFixed(0)}ms · vendor gap max {f(d.maxResultGapMs)}
+      <br />
+      leaks stripped {d.leaks} · retries {d.retries} · already-in-target {d.alreadyInTarget} · untranslated {d.untranslated} · phantom dropped {d.filtered}
+      {d.log.length > 0 && (
+        <>
+          <br />
+          {d.log.slice(-6).map((l, i) => (
+            <span key={i}>{l}<br /></span>
+          ))}
+        </>
+      )}
     </p>
   );
 }

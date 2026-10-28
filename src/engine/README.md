@@ -68,7 +68,11 @@ prompt is probably below it, so `cacheReadTokens` will read 0 until the glossary
 
 ### Glossary
 
-`glossary/glossary.json`: `{ entries: [{ en, es, note? }] }`. `ClaudeTranslator` accepts a `glossary` option, so a future
+`glossary/glossary.json`: `{ entries: [{ en, es, note?, soundsLike?, placeholder? }] }`. `soundsLike` lists known mishearings
+(including Spanish speakers saying the English word: "bailos"/"bailes" = bylaws); they go into the translation prompt as
+"often heard as" so the translator resolves them in context. Entries with `placeholder: true` (org name, website, people)
+are ignored until filled in: edit `en`/`es`/`soundsLike` and delete the flag. `glossaryKeyterms()` turns the correct
+spellings (never the mishearings) into Deepgram `keyterm` hints, capped at ~350 of Deepgram's 500 tokens. `ClaudeTranslator` accepts a `glossary` option, so a future
 admin UI/DB can supply its own without engine changes.
 
 ## Chosen Deepgram values (and why)
@@ -173,6 +177,29 @@ the local clock). Excludes the browser-to-server hop, which is one extra request
 A second run (one stream, ending in 20 s of silence) gave 0.89 / 3.11 s emit and 2.02 / 4.58 s done, so p95 ranges 3.5-4.6 s and
 n is small. Language detection used word tags for 25 of 26 phrases. The forced drop reconnected and continued (reconnects=1).
 `/meeting?debug=1` shows the same percentiles live for a real session.
+
+## Meeting quality fixes (first field test)
+
+Root causes and changes, in the order they were reported:
+
+| Problem | Root cause | Change |
+|---|---|---|
+| Reasoning text in translations ("Wait, the target language is...") | Free-text output, and the target language was named in both the system prompt and the user message in different words, so the model reconciled them aloud | The model can only answer through a forced `submit_translation` tool; only its `translation` field is read. The target language appears once, in `<target_language>`. Defensive filter in `translate/leak.ts` strips known meta patterns and reports each one (`result.leaks`, `?debug=1`). Streamed text that opens like a leak is withheld, not flashed |
+| Blank translations | English text labelled Spanish (or the reverse) made the model "translate" into the language it was already in and return nothing; no fallback existed | `isAlreadyIn` (words outrank the vendor tag) shows the original as "(already in X)" with no API call. Empty answers retry once, then show the original marked "(untranslated)". Never blank |
+| Phantom languages | `language=multi` tags short fillers as Telugu, Hebrew, Hungarian... `language_hint` biases but does **not** restrict | `classifyPhrase` drops non-Latin words, drops phrases tagged only with other languages unless the words are plainly en/es, and makes 1-2 word phrases inherit the previous phrase's language. `language_hint=en&language_hint=es` is also sent |
+| Caption stalls and bursts | See below | See below |
+| Truncated / duplicated translations | The stream was never validated: a clean-closed upstream stream was reported as "done" whatever it contained (no `stop_reason` / `message_stop` check). Duplicates: earlier translations were interleaved with the new text as plain prose | A reply is complete only with `message_stop`, `stop_reason: tool_use` and parseable JSON; otherwise one retry (bigger budget), never "done". `max_tokens` is now >= 1024. Context is a separate `<context>` field, and a repeated copy of the previous translation is stripped |
+| Mishearings | No vocabulary | Glossary + `keyterm` hints (verified against Deepgram: keyterms work with Nova-3 `language=multi`) |
+
+**Caption stalls.** Phrases are emitted by the segmenter, and its "quiet" and "hold" emission ran on `setTimeout`. A hidden or
+occluded window (Puente behind Zoom) has timers throttled to 1/s and, after 5 minutes, about 1/min, so phrases waited for the
+next vendor message and then flushed together. Timestamps came from `Date.now()` at emission, so a burst got one time.
+Changes: segmenter/reconnect timers run in a Worker (not throttled); the segmenter also enforces both deadlines on every
+vendor message (they arrive through silence); the AudioContext is resumed if Chrome suspends it; captions are timestamped
+from the vendor's first-word start time and the transcript is ordered by it. Audio capture was already an AudioWorklet. Translation
+was already parallel (one request and one slot per phrase); a stalled request (no progress for 20 s) is now abandoned and retried
+so it cannot hold a connection. `?debug=1` shows max speech-end-to-caption delay, throttling events, worst audio-chunk and vendor
+gaps, and a warning banner when the heartbeat ran more than 3 s late.
 
 ## Deploying (Railway)
 
