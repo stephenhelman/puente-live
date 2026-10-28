@@ -4,13 +4,33 @@
       "en": "chapter",
       "es": "capítulo",
       "note": "Local branch of the organization",
-      "soundsLike": ["chat", "chárter", "cháter", "chápel", "chatter", "chart", "chapte", "chatte", "chápiz", "charte"]
+      "soundsLike": [
+        "chat",
+        "chárter",
+        "cháter",
+        "chápel",
+        "chatter",
+        "chart",
+        "chapte",
+        "chatte",
+        "chápiz",
+        "charte"
+      ]
     },
     {
       "en": "IRS",
       "es": "IRS",
       "note": "US tax agency; keep the acronym",
-      "soundsLike": ["IARS", "IA Res", "arres", "haya res", "Yarves", "layar red", "Zalaya Rest", "I R S"]
+      "soundsLike": [
+        "IARS",
+        "IA Res",
+        "arres",
+        "haya res",
+        "Yarves",
+        "layar red",
+        "Zalaya Rest",
+        "I R S"
+      ]
     },
     {
       "en": "PO Box",
@@ -24,18 +44,48 @@
       "note": "The organization's governing rules. Spanish speakers often say the English word, heard as bailos / bailes",
       "soundsLike": ["bailos", "bailes", "bailaws", "bye laws", "virus"]
     },
-    { "en": "W-9", "es": "W-9", "note": "IRS form; keep as is", "soundsLike": ["W 9", "W nine", "w9"] },
+    {
+      "en": "W-9",
+      "es": "W-9",
+      "note": "IRS form; keep as is",
+      "soundsLike": ["W 9", "W nine", "w9"]
+    },
     {
       "en": "Form 802",
       "es": "Formulario 802",
       "note": "Spoken as digits, often transcribed '8 0 2'",
       "soundsLike": ["8 0 2", "eight oh two", "formulario ochocientos dos"]
     },
-    { "en": "American Express", "es": "American Express", "note": "Company name; keep as is", "soundsLike": ["Amex"] },
-    { "en": "Wells Fargo", "es": "Wells Fargo", "note": "Bank name; keep as is", "soundsLike": [] },
-    { "en": "T-Mobile", "es": "T-Mobile", "note": "Company name; keep as is", "soundsLike": ["T Mobile"] },
-    { "en": "Sanofi", "es": "Sanofi", "note": "Company name; keep as is", "soundsLike": [] },
-    { "en": "Zoom", "es": "Zoom", "note": "Video meeting software; keep as is", "soundsLike": [] },
+    {
+      "en": "American Express",
+      "es": "American Express",
+      "note": "Company name; keep as is",
+      "soundsLike": ["Amex"]
+    },
+    {
+      "en": "Wells Fargo",
+      "es": "Wells Fargo",
+      "note": "Bank name; keep as is",
+      "soundsLike": []
+    },
+    {
+      "en": "T-Mobile",
+      "es": "T-Mobile",
+      "note": "Company name; keep as is",
+      "soundsLike": ["T Mobile"]
+    },
+    {
+      "en": "Sanofi",
+      "es": "Sanofi",
+      "note": "Company name; keep as is",
+      "soundsLike": []
+    },
+    {
+      "en": "Zoom",
+      "es": "Zoom",
+      "note": "Video meeting software; keep as is",
+      "soundsLike": []
+    },
     {
       "en": "board of directors",
       "es": "junta directiva",
@@ -48,23 +98,38 @@
       "note": "Written record of a meeting (not time). Also said 'minutas'",
       "soundsLike": ["minutas", "actas"]
     },
-    { "en": "food pantry", "es": "despensa de alimentos", "note": "Placeholder program name", "soundsLike": [] },
-    { "en": "volunteer orientation", "es": "orientación para voluntarios", "note": "Placeholder", "soundsLike": [] },
-    { "en": "membership dues", "es": "cuotas de membresía", "note": "Placeholder", "soundsLike": [] },
-
     {
-      "placeholder": true,
-      "en": "[ORG NAME]",
-      "es": "[ORG NAME]",
-      "note": "FILL IN: the organization's name. Replace en/es, add mishearings to soundsLike, then delete the placeholder line",
+      "en": "food pantry",
+      "es": "despensa de alimentos",
+      "note": "Placeholder program name",
       "soundsLike": []
     },
     {
-      "placeholder": true,
-      "en": "[WEBSITE NAME]",
-      "es": "[WEBSITE NAME]",
-      "note": "FILL IN: the website name as spoken (e.g. 'example dot org'). Replace en/es, add mishearings, delete the placeholder line",
+      "en": "volunteer orientation",
+      "es": "orientación para voluntarios",
+      "note": "Placeholder",
       "soundsLike": []
+    },
+    {
+      "en": "membership dues",
+      "es": "cuotas de membresía",
+      "note": "Placeholder",
+      "soundsLike": []
+    },
+
+    {
+      "placeholder": true,
+      "en": "[HOEP]",
+      "es": "[HOEP]",
+      "note": "FILL IN: the organization's name. Replace en/es, add mishearings to soundsLike, then delete the placeholder line",
+      "soundsLike": ["Hope"]
+    },
+    {
+      "placeholder": true,
+      "en": "[Hemo El Paso]",
+      "es": "[Hemo El Paso]",
+      "note": "FILL IN: the website name as spoken (e.g. 'example dot org'). Replace en/es, add mishearings, delete the placeholder line",
+      "soundsLike": ["Hemo El Paso"]
     },
     {
       "placeholder": true,
