@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ClaudeTranslator } from "./claude";
 import type { Lang } from "../types";
+import type { GlossaryProfile } from "../glossary";
 import type { SourceLang } from "./types";
 
 /**
@@ -33,6 +34,35 @@ describe.skipIf(!live)("live: the model decides the direction", () => {
       if (c.out === "same") expect(r.text.trim()).toBe(c.text);
       else if (c.out === "es") expect(ES.test(r.text) && !/\b(the|we|to|of|and)\b/i.test(r.text)).toBe(true);
       else expect(EN.test(r.text) && !/[ñáéíóú¿¡]/i.test(r.text)).toBe(true);
+    });
+  }
+});
+
+/**
+ * Hemophilia profile: the glossary terms must come out right, including misheard ones. `must` = every pattern has to
+ * appear in the output (case-insensitive); `mustNot` = none may.
+ */
+const hemo: { text: string; hint: Lang; source: SourceLang; must: RegExp[]; mustNot?: RegExp[] }[] = [
+  { text: "People with hemophilia A need factor VIII infusions as prophylaxis", hint: "en", source: "en", must: [/hemofilia A/i, /factor VIII/i, /infusion|infusiones/i, /profilaxis/i] },
+  { text: "Una inyección de factor ocho puede detener un sangrado articular", hint: "es", source: "es", must: [/factor VIII/i, /joint bleed|bleed/i] },
+  { text: "he mo feelia is an inherited bleeding disorder", hint: "es", source: "en", must: [/hemofilia/i], mustNot: [/he mo/i] }, // misheard + wrong hint
+  { text: "My son takes hem libra every week", hint: "en", source: "en", must: [/Hemlibra/], mustNot: [/hem libra/i, /\blibra\b/i] },
+  { text: "El emicizumab ayuda a prevenir los sangrados en personas con inhibidores", hint: "es", source: "es", must: [/emicizumab/i, /inhibitors?/i, /bleed/i] },
+  { text: "Talk to your hematologist at the hemophilia treatment center about the inhibitor test", hint: "en", source: "en", must: [/hematólogo/i, /centro de tratamiento de hemofilia/i, /inhibidor/i] },
+  { text: "She is a carrier and her port was placed last year", hint: "en", source: "en", must: [/portadora/i, /puerto|catéter/i] },
+  { text: "Please approve the minutes from the last meeting", hint: "en", source: "en", must: [/minutas|actas|reuni/i] }, // control: ordinary sentence still translates
+];
+
+describe.skipIf(!live)("live: the hemophilia profile", () => {
+  const tr = new ClaudeTranslator({ apiKey: process.env.ANTHROPIC_API_KEY ?? "" });
+  const profile: GlossaryProfile = "hemophilia";
+  for (const c of hemo) {
+    it(`${JSON.stringify(c.text)} (hint ${c.hint})`, async () => {
+      const r = await tr.translate({ text: c.text, hint: c.hint, profile });
+      console.log(`  ${JSON.stringify(c.text)} -> [${r.sourceLang}] ${JSON.stringify(r.text)}`);
+      expect(r.sourceLang).toBe(c.source);
+      for (const m of c.must) expect(r.text).toMatch(m);
+      for (const m of c.mustNot ?? []) expect(r.text).not.toMatch(m);
     });
   }
 });

@@ -24,5 +24,14 @@ export { DeepgramSttProvider, mintDeepgramToken, buildListenUrl } from "./stt/de
 export type { Translator, TranslateRequest, TranslateResult, ContextPair, TranslateStreamEvent, SourceLang } from "./translate/types";
 export { ClaudeTranslator, DEFAULT_TRANSLATE_MODEL } from "./translate/claude";
 export { cleanTranslation, stripLeaks, stripRepeatedPrefix, type Cleaned } from "./translate/leak";
-export type { Glossary, GlossaryEntry } from "./glossary";
-export { loadDefaultGlossary, glossaryKeyterms } from "./glossary";
+export type { Glossary, GlossaryEntry, GlossaryProfile } from "./glossary";
+export {
+  loadDefaultGlossary,
+  loadGlossary,
+  parseProfile,
+  glossaryKeyterms,
+  keytermTokens,
+  GLOSSARY_PROFILES,
+  DEFAULT_PROFILE,
+  KEYTERM_SELF_CAP,
+} from "./glossary";

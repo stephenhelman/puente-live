@@ -1,4 +1,4 @@
-import type { ContextPair, Direction, Lang, SourceLang } from "@/engine";
+import type { ContextPair, Direction, GlossaryProfile, Lang, SourceLang } from "@/engine";
 import { hardNavigate } from "@/lib/nav";
 
 export class NetworkError extends Error {}
@@ -9,6 +9,8 @@ export interface AutoDirection {
   auto: true;
   /** The speech recognizer's guess. A hint, not the decider. */
   hint?: Lang;
+  /** Glossary profile for the translation prompt. Default (omitted): "chapter". */
+  profile?: GlossaryProfile;
 }
 
 /**
@@ -31,7 +33,7 @@ export async function streamTranslate(
     res = await fetch("/api/translate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify("auto" in direction ? { text, auto: true, hint: direction.hint, stream: true, context } : { text, direction, stream: true, context }),
+      body: JSON.stringify("auto" in direction ? { text, auto: true, hint: direction.hint, profile: direction.profile, stream: true, context } : { text, direction, stream: true, context }),
       signal,
     });
   } catch (e) {

@@ -146,18 +146,28 @@ describe("caption pipeline", () => {
   });
 
   it("abandons a stalled request and retries without blocking others", async () => {
-    const m = manual();
-    const p = new CaptionPipeline({ translate: m.fn, stallMs: 30 }, { onChange: () => {} });
-    p.add(phrase("lenta"));
-    p.add(phrase("rápida"));
-    await tick();
-    m.calls[1]!.resolve("fast");
-    await new Promise((r) => setTimeout(r, 60));
-    expect(m.calls.length).toBe(3); // the retry of "lenta"
-    expect(p.entries[1]!.translation).toBe("fast");
-    m.calls[2]!.resolve("slow");
-    await p.idle();
-    expect(p.entries[0]!.translation).toBe("slow");
+    // Fake timers: the stall deadline is crossed by advancing the clock, not by racing real time.
+    vi.useFakeTimers();
+    try {
+      const m = manual();
+      const p = new CaptionPipeline({ translate: m.fn, stallMs: 30 }, { onChange: () => {} });
+      p.add(phrase("lenta"));
+      p.add(phrase("rápida"));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(m.calls).toHaveLength(2);
+      m.calls[1]!.resolve("fast");
+      await vi.advanceTimersByTimeAsync(29);
+      expect(m.calls).toHaveLength(2); // not stalled yet
+      await vi.advanceTimersByTimeAsync(1); // 30 ms with no progress: abandoned, retried
+      expect(m.calls[0]!.call.signal.aborted).toBe(true);
+      expect(m.calls).toHaveLength(3); // the retry of "lenta"
+      expect(p.entries[1]!.translation).toBe("fast");
+      m.calls[2]!.resolve("slow");
+      await p.idle();
+      expect(p.entries[0]!.translation).toBe("slow");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("sends earlier phrases from the same source as context only", async () => {

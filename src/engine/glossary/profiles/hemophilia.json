@@ -1,0 +1,404 @@
+{
+  "context": "hemophilia and bleeding-disorder care, treatment, education and community events",
+  "entries": [
+    {
+      "en": "hemophilia",
+      "es": "hemofilia",
+      "note": "Inherited bleeding disorder. Spanish speakers and the transcriber often garble it",
+      "soundsLike": [
+        "he mo feelia",
+        "hemo feelia",
+        "hemophelia",
+        "hemophilic a",
+        "hemo filia",
+        "hemofília",
+        "hemophilia eh"
+      ],
+      "keyterms": [
+        "hemophilia",
+        "hemofilia"
+      ],
+      "reviewed": false
+    },
+    {
+      "en": "hemophilia A",
+      "es": "hemofilia A",
+      "note": "Factor VIII deficiency",
+      "soundsLike": [
+        "hemophilia eh",
+        "hemophilia a",
+        "he mo feelia A",
+        "hemofilia a"
+      ],
+      "keyterms": [],
+      "reviewed": false
+    },
+    {
+      "en": "hemophilia B",
+      "es": "hemofilia B",
+      "note": "Factor IX deficiency",
+      "soundsLike": [
+        "hemophilia bee",
+        "hemophilia be",
+        "he mo feelia B",
+        "hemofilia be"
+      ],
+      "keyterms": [],
+      "reviewed": false
+    },
+    {
+      "en": "von Willebrand disease",
+      "es": "enfermedad de von Willebrand",
+      "note": "Another inherited bleeding disorder; keep 'von Willebrand' as is",
+      "soundsLike": [
+        "von Willebrandt",
+        "von Wilbrand",
+        "fon Villebrand",
+        "von Vilebrand",
+        "bon Willebrand",
+        "von will a brand",
+        "von Wilebrand disease"
+      ],
+      "keyterms": [
+        "von Willebrand"
+      ],
+      "reviewed": false
+    },
+    {
+      "en": "clotting factor",
+      "es": "factor de coagulación",
+      "note": "The replacement protein given to people with hemophilia",
+      "soundsLike": [
+        "clocking factor",
+        "cloning factor",
+        "factor de coagulacion",
+        "factor de cuagulación",
+        "clotting vector"
+      ],
+      "keyterms": [
+        "clotting factor",
+        "factor de coagulación"
+      ],
+      "reviewed": false
+    },
+    {
+      "en": "factor VIII",
+      "es": "factor VIII",
+      "note": "Written with the Roman numeral in both languages. Said 'factor eight' / 'factor ocho'; transcribed 'factor 8'",
+      "soundsLike": [
+        "factor 8",
+        "factor eight",
+        "factor ocho",
+        "factor ate",
+        "factor aight",
+        "factor octavo"
+      ],
+      "keyterms": [
+        "factor VIII",
+        "factor eight",
+        "factor ocho"
+      ],
+      "reviewed": false
+    },
+    {
+      "en": "factor IX",
+      "es": "factor IX",
+      "note": "Written with the Roman numeral in both languages. Said 'factor nine' / 'factor nueve'; transcribed 'factor 9'",
+      "soundsLike": [
+        "factor 9",
+        "factor nine",
+        "factor nueve",
+        "factor nain",
+        "factor ix"
+      ],
+      "keyterms": [
+        "factor IX",
+        "factor nine",
+        "factor nueve"
+      ],
+      "reviewed": false
+    },
+    {
+      "en": "prophylaxis",
+      "es": "profilaxis",
+      "note": "Regular preventive treatment (not 'prevention' in general); 'prophy' is clinical shorthand",
+      "soundsLike": [
+        "prophylaxes",
+        "prophylactic",
+        "pro filaxis",
+        "profilaxia",
+        "profi laxis",
+        "prophy"
+      ],
+      "keyterms": [
+        "prophylaxis",
+        "profilaxis"
+      ],
+      "reviewed": false
+    },
+    {
+      "en": "infusion",
+      "es": "infusión",
+      "note": "Giving factor or another treatment through a vein. Translate as a treatment infusion in this setting",
+      "soundsLike": [
+        "in fusion",
+        "infusion",
+        "infuzion",
+        "infusión"
+      ],
+      "keyterms": [
+        "infusion",
+        "infusión"
+      ],
+      "reviewed": false
+    },
+    {
+      "en": "inhibitor",
+      "es": "inhibidor",
+      "note": "Antibodies that block clotting factor treatment (not a drug). Plural: inhibidores",
+      "soundsLike": [
+        "inhibiter",
+        "in hibitor",
+        "inhibitor",
+        "inhibidores",
+        "in hibidor"
+      ],
+      "keyterms": [
+        "inhibitor",
+        "inhibidor"
+      ],
+      "reviewed": false
+    },
+    {
+      "en": "bleed",
+      "es": "sangrado",
+      "note": "A bleeding event, as a noun ('a bleed', 'los sangrados')",
+      "soundsLike": [
+        "bleat",
+        "blead",
+        "bled"
+      ],
+      "keyterms": [],
+      "reviewed": false
+    },
+    {
+      "en": "bleeding episode",
+      "es": "episodio de sangrado",
+      "note": "A bleeding event",
+      "soundsLike": [
+        "bleeding episodes",
+        "bleeding a pisode",
+        "episodio de sangrado"
+      ],
+      "keyterms": [],
+      "reviewed": false
+    },
+    {
+      "en": "joint bleed",
+      "es": "sangrado articular",
+      "note": "Bleeding into a joint. The technical term 'hemartrosis' (hemarthrosis) means the same; use it only if the speaker did",
+      "soundsLike": [
+        "joint bleat",
+        "joint blead",
+        "join bleed",
+        "sangrado en la articulación"
+      ],
+      "keyterms": [
+        "sangrado articular"
+      ],
+      "reviewed": false
+    },
+    {
+      "en": "hemarthrosis",
+      "es": "hemartrosis",
+      "note": "Technical term for a joint bleed",
+      "soundsLike": [
+        "hemarthrosis",
+        "hem art rosis",
+        "hemartrosis",
+        "hemo artrosis"
+      ],
+      "keyterms": [
+        "hemartrosis"
+      ],
+      "reviewed": false
+    },
+    {
+      "en": "hematologist",
+      "es": "hematólogo",
+      "note": "Blood specialist; female form 'hematóloga'",
+      "soundsLike": [
+        "he mat ologist",
+        "hematologo",
+        "hemato logist",
+        "hematologist",
+        "hematóloga"
+      ],
+      "keyterms": [
+        "hematologist",
+        "hematólogo"
+      ],
+      "reviewed": false
+    },
+    {
+      "en": "hemophilia treatment center",
+      "es": "centro de tratamiento de hemofilia",
+      "note": "Often called an HTC (the acronym stays HTC in both languages)",
+      "soundsLike": [
+        "hemophilia treatment centre",
+        "hemofilia treatment center",
+        "centro de tratamiento de la hemofilia"
+      ],
+      "keyterms": [
+        "hemophilia treatment center",
+        "centro de tratamiento de hemofilia"
+      ],
+      "reviewed": false
+    },
+    {
+      "en": "HTC",
+      "es": "HTC",
+      "note": "Acronym for hemophilia treatment center; keep as is",
+      "soundsLike": [
+        "H T C",
+        "HDC",
+        "age TC",
+        "htc"
+      ],
+      "keyterms": [
+        "HTC"
+      ],
+      "reviewed": false
+    },
+    {
+      "en": "carrier",
+      "es": "portadora",
+      "note": "A person who carries the hemophilia gene (usually a woman; use 'portador' only for a man). Only in this genetic sense; a phone carrier or shipping carrier is the ordinary word",
+      "soundsLike": [
+        "carry er",
+        "carrie",
+        "portadora",
+        "portador"
+      ],
+      "keyterms": [],
+      "reviewed": false
+    },
+    {
+      "en": "port",
+      "es": "puerto",
+      "note": "An implanted device under the skin used for infusions (also 'port-a-cath' / 'catéter'). Only in this medical sense; any other 'port' is the ordinary word",
+      "soundsLike": [
+        "porte",
+        "port a cath",
+        "porta cath",
+        "porto",
+        "puerto"
+      ],
+      "keyterms": [],
+      "reviewed": false
+    },
+    {
+      "en": "emicizumab",
+      "es": "emicizumab",
+      "note": "Generic drug name; keep as is in both languages",
+      "soundsLike": [
+        "emi sizumab",
+        "emissizumab",
+        "emisizumab",
+        "Emmy sue mab",
+        "e miss i zoo mab",
+        "emicizumab-kxwh",
+        "emicizumab kxwh"
+      ],
+      "keyterms": [
+        "emicizumab"
+      ],
+      "reviewed": false
+    },
+    {
+      "en": "Hemlibra",
+      "es": "Hemlibra",
+      "note": "Brand name of emicizumab; keep as is in both languages",
+      "soundsLike": [
+        "hem libra",
+        "hemolibra",
+        "hem Libra",
+        "Hemlibre",
+        "hemli bra",
+        "hem lee bra",
+        "Hem Libra"
+      ],
+      "keyterms": [
+        "Hemlibra"
+      ],
+      "reviewed": false
+    },
+    {
+      "en": "HFA",
+      "es": "HFA",
+      "note": "Hemophilia Federation of America; keep the acronym",
+      "soundsLike": [
+        "H F A",
+        "age F A",
+        "HFA"
+      ],
+      "keyterms": [
+        "HFA"
+      ]
+    },
+    {
+      "en": "NHF",
+      "es": "NHF",
+      "note": "National Hemophilia Foundation; keep the acronym",
+      "soundsLike": [
+        "N H F",
+        "NFH",
+        "N H Eff"
+      ],
+      "keyterms": [
+        "NHF"
+      ]
+    },
+    {
+      "en": "Sanofi",
+      "es": "Sanofi",
+      "note": "Company name (sponsor); keep as is",
+      "soundsLike": [],
+      "keyterms": [
+        "Sanofi"
+      ]
+    },
+    {
+      "placeholder": true,
+      "en": "[HOEP]",
+      "es": "[HOEP]",
+      "note": "FILL IN: the organization's name. Replace en/es, add mishearings to soundsLike, then delete the placeholder line",
+      "soundsLike": [
+        "Hope"
+      ]
+    },
+    {
+      "placeholder": true,
+      "en": "[Hemo El Paso]",
+      "es": "[Hemo El Paso]",
+      "note": "FILL IN: the website name as spoken. Replace en/es, add mishearings, delete the placeholder line",
+      "soundsLike": [
+        "Hemo El Paso"
+      ]
+    },
+    {
+      "placeholder": true,
+      "en": "[PERSON NAME 1]",
+      "es": "[PERSON NAME 1]",
+      "note": "FILL IN: a presenter's name (names are never translated). Copy this entry for more people",
+      "soundsLike": []
+    },
+    {
+      "placeholder": true,
+      "en": "[PERSON NAME 2]",
+      "es": "[PERSON NAME 2]",
+      "note": "FILL IN: another presenter's name",
+      "soundsLike": []
+    }
+  ]
+}

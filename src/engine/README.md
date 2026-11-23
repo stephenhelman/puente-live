@@ -14,7 +14,7 @@ stt/deepgram.ts        DeepgramSttProvider (browser or Node 22+), mintDeepgramTo
 translate/types.ts     Translator, TranslateRequest, TranslateResult
 translate/prompt.ts    System prompt + user message builders
 translate/claude.ts    ClaudeTranslator (server only; takes an API key)
-glossary/              glossary.json + loader/formatter
+glossary/              profiles/{chapter,hemophilia}.json + loader/formatter
 ```
 
 ## Interfaces
@@ -68,7 +68,7 @@ prompt is probably below it, so `cacheReadTokens` will read 0 until the glossary
 
 ### Glossary
 
-`glossary/glossary.json`: `{ entries: [{ en, es, note?, soundsLike?, placeholder? }] }`. `soundsLike` lists known mishearings
+`glossary/profiles/<name>.json` (see "Glossary profiles" below): `{ context?, entries: [{ en, es, note?, soundsLike?, placeholder?, reviewed?, keyterms? }] }`. `soundsLike` lists known mishearings
 (including Spanish speakers saying the English word: "bailos"/"bailes" = bylaws); they go into the translation prompt as
 "often heard as" so the translator resolves them in context. Entries with `placeholder: true` (org name, website, people)
 are ignored until filled in: edit `en`/`es`/`soundsLike` and delete the flag. `glossaryKeyterms()` turns the correct
@@ -200,6 +200,26 @@ from the vendor's first-word start time and the transcript is ordered by it. Aud
 was already parallel (one request and one slot per phrase); a stalled request (no progress for 20 s) is now abandoned and retried
 so it cannot hold a connection. `?debug=1` shows max speech-end-to-caption delay, throttling events, worst audio-chunk and vendor
 gaps, and a warning banner when the heartbeat ran more than 3 s late.
+
+## Glossary profiles
+
+Two bundled profiles, `chapter` (the original chapter-admin terms) and `hemophilia`. Each has its own entries, its own
+Deepgram `keyterm` list and its own system prompt, so each gets its own prompt-cache entry. `GLOSSARY_PROFILES` /
+`parseProfile()` / `loadGlossary(name)` live in `glossary/index.ts` and are exported from `@/engine`.
+
+- **Request:** `/api/translate` takes `profile` (default `chapter`; an unknown or non-string value is a 400, never a silent
+  fallback). `ClaudeTranslator` builds each profile's prompts once. A `glossary` constructor option still overrides all profiles.
+- **Recognizer:** `glossaryKeyterms(loadGlossary(profile))`. `useMeeting(defaultProfile)` resolves the profile when a session
+  starts: the page default (`/meeting`: `chapter`; `/present` will pass `hemophilia`), overridden by `?profile=` (unknown names
+  are ignored). The profile is stored with each phrase, so a retry uses the profile the phrase was spoken under.
+- **Prompt wording:** `context` (optional) replaces "chapter business, taxes, mail, finances, governance" in the glossary
+  paragraph; the chapter prompt is byte-for-byte what it was before profiles.
+- **Keyterms:** an entry may list its own `keyterms` (e.g. the spoken "factor eight" / "factor ocho"); `[]` opts everyday words
+  out ("bleed", "port", "carrier") so the recognizer is not biased toward them. Mishearings never go to Deepgram.
+  Estimated cost (chars/3 + 1 per term, self-cap 350 of Deepgram's 500): chapter 25 terms / 126 tokens, hemophilia 29 terms / 147 tokens.
+- **Clinical review:** every medical entry in `hemophilia.json` is `reviewed: false`. Nothing is blocked on it, but **a
+  clinician should review these renderings (and the choice of "sangrado articular" over "hemartrosis" for "joint bleed", and
+  "portadora"/"puerto") before a public event**, then flip the flag.
 
 ## Translation direction in meeting mode (auto mode)
 

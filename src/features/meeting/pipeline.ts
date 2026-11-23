@@ -1,4 +1,4 @@
-import type { ContextPair, Lang, SourceLang } from "@/engine";
+import type { ContextPair, GlossaryProfile, Lang, SourceLang } from "@/engine";
 import type { CaptionEntry, SourceId } from "./transcript";
 
 export interface PhraseInput {
@@ -7,6 +7,8 @@ export interface PhraseInput {
   text: string;
   /** Wall-clock ms when the phrase was spoken. */
   spokenAt: number;
+  /** Glossary profile for this phrase's translation (kept for its retries). Default: "chapter". */
+  profile?: GlossaryProfile;
   /** DEBUG ONLY: a word-list heuristic thinks the phrase is already in the other language. Never changes what is shown. */
   alreadyHint?: boolean;
 }
@@ -15,6 +17,7 @@ export interface TranslateCall {
   text: string;
   /** The recognizer's guess at the language: a hint for the model, which decides the direction itself. */
   hint: Lang;
+  profile?: GlossaryProfile;
   context: ContextPair[];
   /** Growing text while it streams. */
   onText: (soFar: string) => void;
@@ -64,6 +67,7 @@ export class CaptionPipeline {
   private nextId = 1;
   private readonly controllers = new Set<AbortController>();
   private readonly inflight = new Set<Promise<void>>();
+  private readonly profiles = new Map<number, GlossaryProfile>();
   private generation = 0;
 
   constructor(
@@ -87,6 +91,7 @@ export class CaptionPipeline {
       translation: "",
       status: "translating",
     };
+    if (p.profile) this.profiles.set(id, p.profile);
     this.list = [...this.list, entry];
     this.hooks.onChange(this.list);
     if (p.alreadyHint) this.hooks.onEvent?.({ kind: "already-hint", id });
@@ -116,6 +121,7 @@ export class CaptionPipeline {
   clear() {
     this.abortAll();
     this.list = [];
+    this.profiles.clear();
     this.hooks.onChange(this.list);
   }
 
@@ -160,6 +166,7 @@ export class CaptionPipeline {
         const text = await this.opts.translate({
           text: entry.original,
           hint,
+          profile: this.profiles.get(id),
           context: this.contextFor(id),
           signal: ctrl.signal,
           onText: (soFar) => {

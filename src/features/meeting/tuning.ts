@@ -1,3 +1,4 @@
+import { DEFAULT_PROFILE, parseProfile, type GlossaryProfile } from "@/engine";
 import { getTuning, type Tuning } from "@/features/converse/tuning";
 
 export const MAX_SESSION_MINUTES = 180;
@@ -7,6 +8,15 @@ export const WARN_BEFORE_END_MINUTES = 10;
 export interface MeetingTuning extends Tuning {
   maxSessionMs: number;
   warnAtMs: number;
+}
+
+/**
+ * Which glossary profile to use: `?profile=hemophilia` overrides the page's default (testing). An unknown name is
+ * ignored rather than trusted.
+ */
+export function getProfile(fallback: GlossaryProfile = DEFAULT_PROFILE): GlossaryProfile {
+  if (typeof window === "undefined") return fallback;
+  return parseProfile(new URLSearchParams(window.location.search).get("profile")) ?? fallback;
 }
 
 /**

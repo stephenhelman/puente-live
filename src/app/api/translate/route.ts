@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { ClaudeTranslator, type ContextPair, type Direction } from "@/engine";
+import { ClaudeTranslator, parseProfile, type ContextPair, type Direction } from "@/engine";
 import { requireEnv } from "@/lib/server/env";
 import { hasSession } from "@/lib/server/session";
 
@@ -26,9 +26,9 @@ function parseDirection(v: unknown): Direction | null {
 }
 
 /**
- * POST { text, direction | auto:true [+hint], stream?, context? }   context = earlier phrases of the same turn (never stored)
+ * POST { text, direction | auto:true [+hint], profile?, stream?, context? }   context = earlier phrases of the same turn (never stored)
  * - direction: fixed (/converse, /debug). auto:true: the model decides the source language (meeting, presentation);
- *   hint = the recognizer's guess, optional.
+ *   hint = the recognizer's guess, optional. profile = glossary profile name (default "chapter"; unknown -> 400).
  * - stream falsy: JSON TranslateResult (used by /debug).
  * - stream true: application/x-ndjson, one JSON object per line:
  *     {"t":"source","lang":"en|es|mixed"} (auto only), {"t":"delta","text":"..."} ... then {"t":"done","result":{...}}
@@ -54,6 +54,7 @@ export async function POST(req: Request) {
     direction?: unknown;
     auto?: unknown;
     hint?: unknown;
+    profile?: unknown;
     stream?: unknown;
     context?: unknown;
   } | null;
@@ -61,10 +62,12 @@ export async function POST(req: Request) {
   const direction = auto ? undefined : parseDirection(body?.direction);
   const hint: "en" | "es" | undefined = body?.hint === "en" ? "en" : body?.hint === "es" ? "es" : undefined;
   const context = parseContext(body?.context);
-  if (typeof body?.text !== "string" || (!auto && !direction) || !context || body.text.length > MAX_CHARS) {
+  // An absent profile means the default; a present but unknown one is rejected, never silently swapped.
+  const profile = body?.profile === undefined ? undefined : parseProfile(body.profile);
+  if (typeof body?.text !== "string" || (!auto && !direction) || !context || profile === null || body.text.length > MAX_CHARS) {
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   }
-  const request = { text: body.text, direction: direction ?? undefined, hint: auto ? hint : undefined, context };
+  const request = { text: body.text, direction: direction ?? undefined, hint: auto ? hint : undefined, profile, context };
 
   if (body.stream === true) {
     const enc = new TextEncoder();

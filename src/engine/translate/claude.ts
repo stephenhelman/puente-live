@@ -1,4 +1,4 @@
-import { loadDefaultGlossary, type Glossary } from "../glossary";
+import { DEFAULT_PROFILE, loadGlossary, type Glossary } from "../glossary";
 import { LeakGuard, cleanTranslation } from "./leak";
 import { JsonStringField } from "./partialJson";
 import {
@@ -57,15 +57,24 @@ const emptyUsage = (): Usage => ({ inputTokens: 0, outputTokens: 0, cacheReadTok
  * translation.
  */
 export class ClaudeTranslator implements Translator {
-  private readonly system: string;
-  private readonly autoSystem: string;
+  /** One pair of system prompts per profile, built once. Different text = a separate prompt-cache entry per profile. */
+  private readonly prompts = new Map<string, { fixed: string; auto: string }>();
 
+  /** `glossary` overrides every profile (tests, a future admin UI); otherwise the request's profile picks the bundled one. */
   constructor(
     private readonly opts: { apiKey: string; model?: string; glossary?: Glossary },
-  ) {
-    const glossary = opts.glossary ?? loadDefaultGlossary();
-    this.system = buildSystemPrompt(glossary);
-    this.autoSystem = buildAutoSystemPrompt(glossary);
+  ) {}
+
+  private promptsFor(req: TranslateRequest) {
+    const profile = req.profile ?? DEFAULT_PROFILE;
+    const key = this.opts.glossary ? "custom" : profile;
+    let p = this.prompts.get(key);
+    if (!p) {
+      const g = this.opts.glossary ?? loadGlossary(profile);
+      p = { fixed: buildSystemPrompt(g), auto: buildAutoSystemPrompt(g) };
+      this.prompts.set(key, p);
+    }
+    return p;
   }
 
   private get model() {
@@ -128,7 +137,8 @@ export class ClaudeTranslator implements Translator {
   private post(text: string, req: TranslateRequest, stream: boolean, tokenFactor: number, signal?: AbortSignal) {
     // Fixed direction (/converse) keeps its own prompt and tool; auto mode lets the model decide the direction.
     const auto = !req.direction;
-    const system = auto ? this.autoSystem : this.system;
+    const prompts = this.promptsFor(req);
+    const system = auto ? prompts.auto : prompts.fixed;
     const tool = auto ? AUTO_TRANSLATION_TOOL : TRANSLATION_TOOL;
     const user = req.direction
       ? buildUserMessage(text, req.direction.to, req.context)

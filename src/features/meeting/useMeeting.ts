@@ -6,10 +6,11 @@ import { TokenError } from "@/features/audio/token";
 import { percentile } from "@/features/debug/stats";
 import { createWorkerTimers, type DisposableTimers } from "@/features/audio/workerTimers";
 import { streamTranslate } from "@/features/converse/streamTranslate";
+import { DEFAULT_PROFILE, glossaryKeyterms, loadGlossary, type GlossaryProfile } from "@/engine";
 import { CaptionSource, type PhraseEvent, type SourceStatus } from "./captionSource";
 import { CaptionPipeline, type PipelineEvent } from "./pipeline";
 import type { CaptionEntry, SourceId } from "./transcript";
-import { getMeetingTuning, type MeetingTuning } from "./tuning";
+import { getMeetingTuning, getProfile, type MeetingTuning } from "./tuning";
 
 export type Phase = "idle" | "starting" | "live" | "stopping";
 export type MeetingErrorKind = CaptureFailure | "offline" | "token" | "stt";
@@ -69,7 +70,8 @@ const THROTTLE_GAP_MS = 3000;
 const LOG_LIMIT = 30;
 const CONTEXT_PHRASES = 6;
 
-export function useMeeting() {
+/** `defaultProfile`: the glossary profile this page uses unless the URL says `?profile=`. /meeting: "chapter". */
+export function useMeeting(defaultProfile: GlossaryProfile = DEFAULT_PROFILE) {
   const [phase, setPhaseState] = useState<Phase>("idle");
   const [entries, setEntries] = useState<CaptionEntry[]>([]);
   const [tails, setTails] = useState<Record<SourceId, string>>({ meeting: "", you: "" });
@@ -84,6 +86,9 @@ export function useMeeting() {
   const phaseRef = useRef<Phase>("idle");
   const srcs = useRef<Partial<Record<SourceId, CaptionSource>>>({});
   const tuningRef = useRef<MeetingTuning | null>(null);
+  /** Resolved when the session starts; read by every translation request and by each source's keyterms. */
+  const profileRef = useRef<GlossaryProfile>(defaultProfile);
+  const keytermsRef = useRef<string[]>([]);
   const [limits, setLimits] = useState<{ maxSessionMs: number; warnAtMs: number } | null>(null);
   const mounted = useRef(true);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -140,7 +145,7 @@ export function useMeeting() {
         {
           contextPhrases: CONTEXT_PHRASES,
           translate: (c) =>
-            streamTranslate(c.text, { auto: true, hint: c.hint }, c.onText, c.signal, c.context, c.onResult, c.onSource),
+            streamTranslate(c.text, { auto: true, hint: c.hint, profile: c.profile }, c.onText, c.signal, c.context, c.onResult, c.onSource),
         },
         { onChange: (list) => setEntries(list), onEvent: onPipelineEvent },
       ),
@@ -152,7 +157,7 @@ export function useMeeting() {
       if (e.endedAtLocal !== undefined) recordTiming("phrase", e.emittedAtLocal - e.endedAtLocal);
       const ended = e.endedAtLocal;
       pipeline.add(
-        { source: e.source, lang: e.lang, text: e.text, spokenAt: e.spokenAt, alreadyHint: e.alreadyHint },
+        { source: e.source, lang: e.lang, text: e.text, spokenAt: e.spokenAt, alreadyHint: e.alreadyHint, profile: profileRef.current },
         () => ended !== undefined && recordTiming("first", performance.now() - ended),
         () => ended !== undefined && recordTiming("done", performance.now() - ended),
       );
@@ -207,6 +212,7 @@ export function useMeeting() {
         id,
         stream,
         tuning,
+        keyterms: keytermsRef.current,
         onPhrase,
         onTail,
         onStatus,
@@ -238,6 +244,8 @@ export function useMeeting() {
     setPhase("starting");
     const tuning = getMeetingTuning();
     tuningRef.current = tuning;
+    profileRef.current = getProfile(defaultProfile);
+    keytermsRef.current = glossaryKeyterms(loadGlossary(profileRef.current));
     setLimits({ maxSessionMs: tuning.maxSessionMs, warnAtMs: tuning.warnAtMs });
     // The picker needs the click's user activation, so it is the first await.
     let meeting: MediaStream;
@@ -299,7 +307,7 @@ export function useMeeting() {
       }));
       if (ms >= tuning.maxSessionMs) void stop();
     }, 1000);
-  }, [bumpDebug, setPhase, startSource, stop, useMic]);
+  }, [bumpDebug, defaultProfile, setPhase, startSource, stop, useMic]);
 
   /** After the user ended screen sharing: pick the meeting audio again without stopping the session. */
   const reshareMeeting = useCallback(async () => {

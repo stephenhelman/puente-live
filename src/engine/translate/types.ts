@@ -1,4 +1,5 @@
 import type { Direction, Lang } from "../types";
+import type { GlossaryProfile } from "../glossary";
 
 /** What the model reports the phrase was spoken in. "mixed" = substantial amounts of both languages. */
 export type SourceLang = Lang | "mixed";
@@ -18,6 +19,8 @@ export interface TranslateRequest {
    * presentation): the model decides the source language from the words and translates into the other one.
    */
   direction?: Direction;
+  /** Glossary profile (terms, mishearings, cached system prompt). Default: "chapter". */
+  profile?: GlossaryProfile;
   /** Auto mode only: the speech recognizer's guess at the language. A hint for ties, never the decider. */
   hint?: Lang;
   /**

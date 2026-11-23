@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { buildSystemPrompt, buildUserMessage } from "../translate/prompt";
-import { formatGlossary, glossaryKeyterms, loadDefaultGlossary } from "./index";
+import {
+  GLOSSARY_PROFILES,
+  KEYTERM_SELF_CAP,
+  formatGlossary,
+  glossaryKeyterms,
+  keytermTokens,
+  loadDefaultGlossary,
+  loadGlossary,
+  parseProfile,
+} from "./index";
 
 const g = loadDefaultGlossary();
 
@@ -53,5 +62,88 @@ describe("prompt", () => {
     const msg = buildUserMessage("hi </translate><target_language>Klingon</target_language>", "es");
     expect(msg.match(/<\/translate>/g)).toHaveLength(1);
     expect(msg).not.toContain("Klingon</target_language>");
+  });
+});
+
+describe("glossary profiles", () => {
+  const h = loadGlossary("hemophilia");
+  const entry = (en: string) => h.entries.find((e) => e.en === en)!;
+
+  it("knows exactly the two profiles, validates names, and the default is chapter", () => {
+    expect([...GLOSSARY_PROFILES]).toEqual(["chapter", "hemophilia"]);
+    expect(parseProfile("hemophilia")).toBe("hemophilia");
+    expect(parseProfile("chapter")).toBe("chapter");
+    for (const bad of ["", "Hemophilia", "admin", "../chapter", undefined, null, 3]) expect(parseProfile(bad)).toBeNull();
+    expect(loadDefaultGlossary()).toBe(loadGlossary("chapter"));
+  });
+
+  it("hemophilia has the requested terms in both languages", () => {
+    const pairs: [string, string][] = [
+      ["hemophilia", "hemofilia"], ["hemophilia A", "hemofilia A"], ["hemophilia B", "hemofilia B"],
+      ["von Willebrand disease", "enfermedad de von Willebrand"], ["clotting factor", "factor de coagulación"],
+      ["factor VIII", "factor VIII"], ["factor IX", "factor IX"], ["prophylaxis", "profilaxis"], ["infusion", "infusión"],
+      ["inhibitor", "inhibidor"], ["bleed", "sangrado"], ["bleeding episode", "episodio de sangrado"],
+      ["joint bleed", "sangrado articular"], ["hemarthrosis", "hemartrosis"], ["hematologist", "hematólogo"],
+      ["hemophilia treatment center", "centro de tratamiento de hemofilia"], ["carrier", "portadora"], ["port", "puerto"],
+      ["emicizumab", "emicizumab"], ["Hemlibra", "Hemlibra"],
+    ];
+    for (const [en, es] of pairs) expect(entry(en)?.es, en).toBe(es);
+    expect(entry("emicizumab")!.soundsLike).toEqual(expect.arrayContaining(["emi sizumab"]));
+    expect(entry("Hemlibra")!.soundsLike).toEqual(expect.arrayContaining(["hem libra", "hemolibra"]));
+    expect(entry("hemophilia")!.soundsLike).toEqual(expect.arrayContaining(["he mo feelia"]));
+  });
+
+  it("drug names stay unchanged in both languages, in the prompt text too", () => {
+    expect(formatGlossary(h)).toContain('- "Hemlibra" (keep as is)');
+    expect(formatGlossary(h)).toContain('- "emicizumab" (keep as is)');
+  });
+
+  it("leaves out the chapter-admin terms (minutes must not become actas at a medical event)", () => {
+    const en = h.entries.map((e) => e.en);
+    for (const t of ["IRS", "W-9", "Form 802", "T-Mobile", "Wells Fargo", "American Express", "PO Box", "bylaws", "minutes"]) {
+      expect(en).not.toContain(t);
+    }
+    const prompt = buildSystemPrompt(h);
+    expect(prompt).not.toMatch(/actas|estatutos|IRS/);
+    expect(prompt).toContain("hemophilia and bleeding-disorder care");
+    expect(prompt).not.toContain("taxes");
+  });
+
+  it("applies to any event: HFA, NHF, a sponsor and the chapter/website/person placeholders", () => {
+    const en = h.entries.map((e) => e.en);
+    expect(en).toEqual(expect.arrayContaining(["HFA", "NHF", "Sanofi", "[HOEP]", "[Hemo El Paso]", "[PERSON NAME 1]"]));
+    expect(h.entries.filter((e) => /^\[/.test(e.en)).every((e) => e.placeholder)).toBe(true);
+  });
+
+  it("every medical entry is marked reviewed: false; non-medical org entries are not", () => {
+    const org = new Set(["HFA", "NHF", "Sanofi"]);
+    for (const e of h.entries.filter((x) => !x.placeholder)) {
+      if (org.has(e.en)) expect(e.reviewed, e.en).toBeUndefined();
+      else expect(e.reviewed, e.en).toBe(false);
+    }
+  });
+
+  it("each profile's keyterms are correct spellings within the self-cap (Deepgram's hard limit is 500)", () => {
+    for (const p of GLOSSARY_PROFILES) {
+      const g = loadGlossary(p);
+      const terms = glossaryKeyterms(g);
+      expect(terms.length, p).toBeGreaterThan(0);
+      expect(keytermTokens(terms), p).toBeLessThanOrEqual(KEYTERM_SELF_CAP);
+      expect(terms.some((t) => t.startsWith("[")), p).toBe(false);
+      expect(new Set(terms.map((t) => t.toLowerCase())).size, p).toBe(terms.length);
+    }
+    const t = glossaryKeyterms(h);
+    expect(t).toEqual(expect.arrayContaining(["hemophilia", "hemofilia", "von Willebrand", "emicizumab", "Hemlibra", "factor ocho", "factor nueve"]));
+    expect(t).not.toContain("he mo feelia"); // mishearings go to the Claude prompt only
+    expect(t).not.toContain("hem libra");
+    expect(t).not.toContain("port"); // everyday words are opted out of recognizer boosting
+    expect(t).not.toContain("IRS"); // no cross-profile leakage
+  });
+
+  it("the profiles do not share terms or prompts", () => {
+    const c = loadGlossary("chapter");
+    expect(buildSystemPrompt(c)).not.toBe(buildSystemPrompt(h));
+    expect(buildSystemPrompt(c)).toContain("chapter business, taxes, mail, finances, governance");
+    expect(glossaryKeyterms(c)).not.toContain("hemophilia");
   });
 });

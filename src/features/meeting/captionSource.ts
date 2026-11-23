@@ -2,9 +2,7 @@ import {
   DeepgramSttProvider,
   classifyPhrase,
   directionFor,
-  glossaryKeyterms,
   isAlreadyIn,
-  loadDefaultGlossary,
   PhraseSegmenter,
   startContinuousStt,
   type ContinuousSttSession,
@@ -20,7 +18,6 @@ import type { SourceId } from "./transcript";
 const provider = new DeepgramSttProvider();
 /** Biases language=multi toward the two languages in use. Bias only: the vendor can still return others (filtered below). */
 const LANGUAGE_HINTS = ["en", "es"];
-const KEYTERMS = glossaryKeyterms(loadDefaultGlossary());
 
 export type SourceStatus = "live" | "reconnecting" | "failed" | "ended";
 
@@ -51,6 +48,8 @@ export interface CaptionSourceOptions {
   id: SourceId;
   stream: MediaStream;
   tuning: MeetingTuning;
+  /** Deepgram `keyterm` list of the active glossary profile (see glossaryKeyterms). */
+  keyterms: string[];
   onPhrase: (e: PhraseEvent) => void;
   /** Words heard but not yet a phrase (finalized-but-buffered plus the current interim). */
   onTail: (id: SourceId, text: string) => void;
@@ -119,7 +118,7 @@ export class CaptionSource {
       sampleRate: STT_SAMPLE_RATE,
       endpointingMs: this.o.tuning.endpointingMs,
       languageHints: LANGUAGE_HINTS,
-      keyterms: KEYTERMS,
+      keyterms: this.o.keyterms,
       timers: this.o.timers,
       onResult: (r) => this.onResult(r),
       onDrop: () => {

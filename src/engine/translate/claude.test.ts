@@ -175,3 +175,41 @@ describe("ClaudeTranslator, auto mode (the model decides the direction)", () => 
     expect(done(ev).sourceLang).toBeUndefined();
   });
 });
+
+describe("ClaudeTranslator, glossary profiles", () => {
+  const sys = (fm: ReturnType<typeof vi.fn>, i = 0): string => JSON.parse(fm.mock.calls[i]![1].body).system[0].text;
+
+  it("sends the profile's own system prompt; no profile means chapter; the two never mix", async () => {
+    const fm = vi.fn().mockImplementation(async () => sse(toolStream("x", { source: "en" })));
+    vi.stubGlobal("fetch", fm);
+    const t = tr();
+    await collect(t.translateStream({ text: "hello", hint: "en" }));
+    await collect(t.translateStream({ text: "hello", hint: "en", profile: "chapter" }));
+    await collect(t.translateStream({ text: "hello", hint: "en", profile: "hemophilia" }));
+    expect(sys(fm, 0)).toBe(sys(fm, 1)); // default = chapter, identical text so the cache entry is shared
+    expect(sys(fm, 0)).toContain("bylaws");
+    expect(sys(fm, 0)).not.toContain("Hemlibra");
+    expect(sys(fm, 2)).toContain("Hemlibra");
+    expect(sys(fm, 2)).toContain("hem libra");
+    expect(sys(fm, 2)).not.toContain("estatutos");
+    expect(sys(fm, 2)).not.toContain("bylaws");
+  });
+
+  it("fixed-direction requests honor the profile too, and keep cache_control on the system block", async () => {
+    const fm = vi.fn().mockResolvedValue(sse(toolStream("x")));
+    vi.stubGlobal("fetch", fm);
+    await collect(tr().translateStream({ ...req, profile: "hemophilia" }));
+    const body = JSON.parse(fm.mock.calls[0]![1].body);
+    expect(body.system[0].text).toContain("Hemlibra");
+    expect(body.system[0].cache_control).toEqual({ type: "ephemeral" });
+  });
+
+  it("an explicit glossary option still overrides every profile", async () => {
+    const fm = vi.fn().mockResolvedValue(sse(toolStream("x", { source: "en" })));
+    vi.stubGlobal("fetch", fm);
+    const t = new ClaudeTranslator({ apiKey: "k", glossary: { entries: [{ en: "zebra", es: "cebra" }] } });
+    await collect(t.translateStream({ text: "hi", hint: "en", profile: "hemophilia" }));
+    expect(sys(fm)).toContain("zebra");
+    expect(sys(fm)).not.toContain("Hemlibra");
+  });
+});
