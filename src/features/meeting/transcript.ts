@@ -5,26 +5,20 @@ export interface CaptionEntry {
   source: SourceId;
   /** Wall-clock ms when the phrase was SPOKEN (Deepgram's first-word start time), not when it was transcribed or translated. */
   at: number;
+  /** The language the phrase was spoken in, as judged by the translation model (the recognizer's tag until it answers). */
   lang: "en" | "es";
+  /** The model heard substantial amounts of both languages; `lang` is then the recognizer's majority. */
+  mixed?: boolean;
   original: string;
   translation: string;
   status: "translating" | "done" | "error";
-  /**
-   * already: the phrase was already in the target language, so `translation` is the original (no API call).
-   * untranslated: the translator returned nothing twice, so `translation` is the original.
-   */
-  note?: "already" | "untranslated";
+  /** untranslated: the translator returned nothing twice, so `translation` is the original. */
+  note?: "untranslated";
 }
-
-const TARGET_NAME = { en: "English", es: "Spanish" } as const;
 
 /** What to print as the translation line of the transcript. Never blank. */
 export function translationText(e: CaptionEntry): string {
   if (e.status === "error") return "(not translated)";
-  if (e.note === "already") {
-    const target = e.lang === "en" ? "es" : "en";
-    return `${e.original} (already in ${TARGET_NAME[target]})`;
-  }
   if (e.note === "untranslated") return `${e.original} (untranslated)`;
   return e.translation || "(not translated)";
 }
@@ -41,6 +35,8 @@ const clock = (ms: number) => {
   return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 };
 const LANG = { en: "English", es: "Español" } as const;
+/** The tag printed next to a phrase: the model's language, or both for code-switched speech. */
+export const langTag = (e: Pick<CaptionEntry, "lang" | "mixed">) => (e.mixed ? "English + Español" : LANG[e.lang]);
 
 const NOTE =
   "AI translation. Not a substitute for a qualified interpreter in clinical, legal, or consent situations. / Traducción con IA. No sustituye a un intérprete calificado en situaciones clínicas, legales o de consentimiento.";
@@ -55,7 +51,7 @@ export function toText(all: CaptionEntry[]): string {
   const body = entries
     .map(
       (e) =>
-        `[${clock(e.at)}] ${LABEL[e.source]} (${LANG[e.lang]})\n  ${e.original}\n  -> ${translationText(e)}`,
+        `[${clock(e.at)}] ${LABEL[e.source]} (${langTag(e)})\n  ${e.original}\n  -> ${translationText(e)}`,
     )
     .join("\n\n");
   return `${header(first)}\n${NOTE}\n\n${body}\n`;
@@ -67,7 +63,7 @@ export function toMarkdown(all: CaptionEntry[]): string {
   const body = entries
     .map(
       (e) =>
-        `**${clock(e.at)} · ${LABEL[e.source]}** _(${LANG[e.lang]})_\n\n> ${e.original}\n\n${e.status === "error" ? "_(not translated)_" : translationText(e)}`,
+        `**${clock(e.at)} · ${LABEL[e.source]}** _(${langTag(e)})_\n\n> ${e.original}\n\n${e.status === "error" ? "_(not translated)_" : translationText(e)}`,
     )
     .join("\n\n---\n\n");
   return `# ${header(first)}\n\n_${NOTE}_\n\n${body}\n`;

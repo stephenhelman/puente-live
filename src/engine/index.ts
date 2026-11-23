@@ -21,7 +21,7 @@ export {
   type ContinuousStatus,
 } from "./stt/continuous";
 export { DeepgramSttProvider, mintDeepgramToken, buildListenUrl } from "./stt/deepgram";
-export type { Translator, TranslateRequest, TranslateResult, ContextPair, TranslateStreamEvent } from "./translate/types";
+export type { Translator, TranslateRequest, TranslateResult, ContextPair, TranslateStreamEvent, SourceLang } from "./translate/types";
 export { ClaudeTranslator, DEFAULT_TRANSLATE_MODEL } from "./translate/claude";
 export { cleanTranslation, stripLeaks, stripRepeatedPrefix, type Cleaned } from "./translate/leak";
 export type { Glossary, GlossaryEntry } from "./glossary";

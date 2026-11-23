@@ -1,5 +1,4 @@
-import type { ContextPair, Direction, Lang } from "@/engine";
-import { directionFor } from "@/engine";
+import type { ContextPair, Lang, SourceLang } from "@/engine";
 import type { CaptionEntry, SourceId } from "./transcript";
 
 export interface PhraseInput {
@@ -8,17 +7,20 @@ export interface PhraseInput {
   text: string;
   /** Wall-clock ms when the phrase was spoken. */
   spokenAt: number;
-  /** The phrase is already in the target language: show it as is, make no API call. */
-  alreadyInTarget: boolean;
+  /** DEBUG ONLY: a word-list heuristic thinks the phrase is already in the other language. Never changes what is shown. */
+  alreadyHint?: boolean;
 }
 
 export interface TranslateCall {
   text: string;
-  direction: Direction;
+  /** The recognizer's guess at the language: a hint for the model, which decides the direction itself. */
+  hint: Lang;
   context: ContextPair[];
   /** Growing text while it streams. */
   onText: (soFar: string) => void;
   onResult: (r: { leaks?: string[]; retried?: boolean; stopReason?: string }) => void;
+  /** What language the model says the phrase was spoken in (may be called twice; the last call wins). */
+  onSource: (lang: SourceLang) => void;
   signal: AbortSignal;
 }
 
@@ -33,7 +35,10 @@ export interface PipelineHooks {
 export type PipelineEvent =
   | { kind: "leak"; id: number; leaks: string[] }
   | { kind: "retry"; id: number; why: "empty" | "error" | "stalled" }
-  | { kind: "passthrough"; id: number }
+  /** Debug: the isAlreadyIn word-list heuristic fired. It changes nothing on screen. */
+  | { kind: "already-hint"; id: number }
+  /** Debug: the model returned the phrase unchanged (expected only for names and acronyms). */
+  | { kind: "unchanged"; id: number }
   | { kind: "untranslated"; id: number }
   | { kind: "first"; id: number }
   | { kind: "done"; id: number };
@@ -45,6 +50,9 @@ export interface PipelineOptions {
   /** A translation request with no progress for this long is abandoned and retried. */
   stallMs?: number;
 }
+
+const norm = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+const sameText = (a: string, b: string) => norm(a) === norm(b);
 
 /**
  * One slot per phrase, created in the order phrases are spoken and never reordered. Every phrase translates
@@ -81,7 +89,8 @@ export class CaptionPipeline {
     };
     this.list = [...this.list, entry];
     this.hooks.onChange(this.list);
-    const run = this.run(id, p.alreadyInTarget, firstText, finished).finally(() => this.inflight.delete(run));
+    if (p.alreadyHint) this.hooks.onEvent?.({ kind: "already-hint", id });
+    const run = this.run(id, firstText, finished).finally(() => this.inflight.delete(run));
     this.inflight.add(run);
     return id;
   }
@@ -89,7 +98,7 @@ export class CaptionPipeline {
   retry(id: number) {
     const e = this.list.find((x) => x.id === id);
     if (!e) return;
-    const run = this.run(id, false).finally(() => this.inflight.delete(run));
+    const run = this.run(id).finally(() => this.inflight.delete(run));
     this.inflight.add(run);
   }
 
@@ -125,18 +134,13 @@ export class CaptionPipeline {
       .map((e) => ({ source: e.original, translation: e.status === "done" && !e.note && e.translation ? e.translation : undefined }));
   }
 
-  private async run(id: number, passthrough: boolean, firstText?: () => void, finished?: () => void) {
+  private async run(id: number, firstText?: () => void, finished?: () => void) {
     const gen = this.generation;
     const entry = this.list.find((e) => e.id === id);
     if (!entry) return;
-    if (passthrough) {
-      this.patch(id, { translation: entry.original, status: "done", note: "already" });
-      this.hooks.onEvent?.({ kind: "passthrough", id });
-      finished?.();
-      return;
-    }
     this.patch(id, { status: "translating", translation: "", note: undefined });
-    const direction = directionFor(entry.lang);
+    // The model decides the direction. The recognizer's tag (`entry.lang` until the model answers) is only a hint.
+    const hint = entry.lang;
     let sawFirst = false;
     // Attempt 0, then ONE retry: for an error, a stall, or an empty answer alike.
     for (let attempt = 0; attempt < 2; attempt++) {
@@ -155,7 +159,7 @@ export class CaptionPipeline {
       try {
         const text = await this.opts.translate({
           text: entry.original,
-          direction,
+          hint,
           context: this.contextFor(id),
           signal: ctrl.signal,
           onText: (soFar) => {
@@ -171,9 +175,15 @@ export class CaptionPipeline {
           onResult: (r) => {
             if (r.leaks?.length) this.hooks.onEvent?.({ kind: "leak", id, leaks: r.leaks });
           },
+          onSource: (lang) => {
+            if (gen !== this.generation) return;
+            // The model's language replaces the recognizer's. "mixed" keeps the recognizer's majority as the tag.
+            this.patch(id, lang === "mixed" ? { mixed: true } : { lang, mixed: false });
+          },
         });
         if (gen !== this.generation) return;
         if (text.trim()) {
+          if (sameText(text, entry.original)) this.hooks.onEvent?.({ kind: "unchanged", id });
           this.patch(id, { translation: text, status: "done" });
           this.hooks.onEvent?.({ kind: "done", id });
           finished?.();

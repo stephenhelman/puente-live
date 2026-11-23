@@ -34,8 +34,8 @@ export interface PhraseEvent {
   emittedAtLocal: number;
   /** Wall-clock ms when the phrase began being SPOKEN (vendor first-word start time mapped to the local clock). */
   spokenAt: number;
-  /** Already in the language it would be translated into: show as is, no API call. */
-  alreadyInTarget: boolean;
+  /** DEBUG ONLY: the word-list heuristic thinks the phrase is already in the other language. Never changes the output. */
+  alreadyHint: boolean;
 }
 
 export interface SourceHealth {
@@ -100,7 +100,7 @@ export class CaptionSource {
           endedAtLocal: info.endSec !== undefined ? this.origin + info.endSec * 1000 : undefined,
           emittedAtLocal: performance.now(),
           spokenAt: info.startSec !== undefined ? this.originEpoch + info.startSec * 1000 : Date.now(),
-          alreadyInTarget: isAlreadyIn(directionFor(lang).to, info.words, text),
+          alreadyHint: isAlreadyIn(directionFor(lang).to, info.words, text),
         });
       },
       o.tuning.segmenter,

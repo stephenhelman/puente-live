@@ -26,10 +26,13 @@ function parseDirection(v: unknown): Direction | null {
 }
 
 /**
- * POST { text, direction, stream?, context? }   context = earlier phrases of the same turn (never stored)
+ * POST { text, direction | auto:true [+hint], stream?, context? }   context = earlier phrases of the same turn (never stored)
+ * - direction: fixed (/converse, /debug). auto:true: the model decides the source language (meeting, presentation);
+ *   hint = the recognizer's guess, optional.
  * - stream falsy: JSON TranslateResult (used by /debug).
  * - stream true: application/x-ndjson, one JSON object per line:
- *     {"t":"delta","text":"..."} ... then {"t":"done","result":{...}} or {"t":"error","message":"..."}
+ *     {"t":"source","lang":"en|es|mixed"} (auto only), {"t":"delta","text":"..."} ... then {"t":"done","result":{...}}
+ *     or {"t":"error","message":"..."}
  */
 function parseContext(v: unknown): ContextPair[] | null {
   if (v === undefined) return [];
@@ -49,15 +52,19 @@ export async function POST(req: Request) {
   const body = (await req.json().catch(() => null)) as {
     text?: unknown;
     direction?: unknown;
+    auto?: unknown;
+    hint?: unknown;
     stream?: unknown;
     context?: unknown;
   } | null;
-  const direction = parseDirection(body?.direction);
+  const auto = body?.auto === true && body.direction === undefined;
+  const direction = auto ? undefined : parseDirection(body?.direction);
+  const hint: "en" | "es" | undefined = body?.hint === "en" ? "en" : body?.hint === "es" ? "es" : undefined;
   const context = parseContext(body?.context);
-  if (typeof body?.text !== "string" || !direction || !context || body.text.length > MAX_CHARS) {
+  if (typeof body?.text !== "string" || (!auto && !direction) || !context || body.text.length > MAX_CHARS) {
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   }
-  const request = { text: body.text, direction, context };
+  const request = { text: body.text, direction: direction ?? undefined, hint: auto ? hint : undefined, context };
 
   if (body.stream === true) {
     const enc = new TextEncoder();
@@ -66,7 +73,9 @@ export async function POST(req: Request) {
         const send = (o: unknown) => controller.enqueue(enc.encode(JSON.stringify(o) + "\n"));
         try {
           for await (const ev of getTranslator().translateStream(request, { signal: req.signal })) {
-            send(ev.type === "delta" ? { t: "delta", text: ev.text } : { t: "done", result: ev.result });
+            send(
+              ev.type === "delta" ? { t: "delta", text: ev.text } : ev.type === "source" ? { t: "source", lang: ev.lang } : { t: "done", result: ev.result },
+            );
           }
         } catch (e) {
           if (!req.signal.aborted) send({ t: "error", message: e instanceof Error ? e.message : "translate failed" });

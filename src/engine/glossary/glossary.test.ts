@@ -27,8 +27,8 @@ describe("glossary", () => {
   });
   it("keeps placeholders for the org, website and people", () => {
     const ph = g.entries.filter((e) => e.placeholder).map((e) => e.en).join(" ");
-    expect(ph).toMatch(/ORG NAME/);
-    expect(ph).toMatch(/WEBSITE NAME/);
+    expect(ph).toMatch(/HOEP/);
+    expect(ph).toMatch(/Hemo El Paso/);
     expect(ph).toMatch(/PERSON NAME/);
   });
   it("keyterms are correct spellings, no placeholders, within the 500-token cap", () => {

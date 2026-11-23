@@ -201,6 +201,22 @@ was already parallel (one request and one slot per phrase); a stalled request (n
 so it cannot hold a connection. `?debug=1` shows max speech-end-to-caption delay, throttling events, worst audio-chunk and vendor
 gaps, and a warning banner when the heartbeat ran more than 3 s late.
 
+## Translation direction in meeting mode (auto mode)
+
+The recognizer's language tag is no longer what decides the direction. `/api/translate` accepts `{ auto: true, hint }` instead of
+a fixed `direction`; `ClaudeTranslator` then uses a separate system prompt and tool (`AUTO_TRANSLATION_TOOL`) whose fields,
+in order, are `source_language` (`en` | `es` | `mixed`), `target_language`, `translation`. The model decides what was spoken and
+translates into the other language (mixed: into the language with fewer words in the input). The tag Deepgram produced is sent
+only as `<transcriber_hint>`. The stream emits `{"t":"source","lang":...}` as soon as `source_language` is parsed, so the pipeline
+updates the entry's language tag before the first text; the `done` event repeats it as the authoritative value.
+
+- No phrase is passed through any more. The only unchanged output is a name or acronym ("NBDC"). `isAlreadyIn` survives only as
+  a `?debug=1` counter ("already-hint"), and a translation identical to its original is counted as "unchanged".
+- The `target_language` field exists because without it code-switched input came back as a hybrid ("Les dije que we need more
+  time...") in live checks. Forcing the model to commit to one output language before writing fixed it.
+- `/converse` and `/debug` keep the fixed side-based `direction`, the old prompt and the old tool (byte-for-byte unchanged).
+- Live check (off by default, a few cents): `set -a; . ./.env; set +a; LIVE_ANTHROPIC=1 pnpm vitest run src/engine/translate/claude.live.test.ts`.
+
 ## Deploying (Railway)
 
 The app is one long-lived Next.js process (`pnpm build`, then `pnpm start`; see `railway.json`). Node 22.x, pnpm per

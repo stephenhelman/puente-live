@@ -266,7 +266,7 @@ function Entry({ e, presenting, onRetry }: { e: CaptionEntry; presenting: boolea
             <>
               {" "}
               <span className={styles.note}>
-                <B t={e.note === "untranslated" ? M.untranslated : e.lang === "en" ? M.alreadyEs : M.alreadyEn} />
+                <B t={M.untranslated} />
               </span>
               {e.note === "untranslated" && !presenting && (
                 <>
@@ -292,7 +292,7 @@ function LatencyLine({ m }: { m: Meeting }) {
       <br />
       max delay speech end → caption {f(s.firstMax)} (phrase {f(s.phraseMax)}) · throttled {d.throttleEvents}× (worst tick gap {f(d.maxTickGapMs)}, hidden {f(d.hiddenMs)}) · audio gap max {d.maxChunkGapMs.toFixed(0)}ms · vendor gap max {f(d.maxResultGapMs)}
       <br />
-      leaks stripped {d.leaks} · retries {d.retries} · already-in-target {d.alreadyInTarget} · untranslated {d.untranslated} · phantom dropped {d.filtered}
+      leaks stripped {d.leaks} · retries {d.retries} · already-hint (debug) {d.alreadyInTarget} · unchanged {d.unchanged} · untranslated {d.untranslated} · phantom dropped {d.filtered}
       {d.log.length > 0 && (
         <>
           <br />

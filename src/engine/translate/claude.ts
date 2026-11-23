@@ -1,15 +1,23 @@
 import { loadDefaultGlossary, type Glossary } from "../glossary";
 import { LeakGuard, cleanTranslation } from "./leak";
 import { JsonStringField } from "./partialJson";
-import { TRANSLATION_TOOL, buildSystemPrompt, buildUserMessage, makeStartCaser } from "./prompt";
-import type { TranslateRequest, TranslateResult, TranslateStreamEvent, Translator } from "./types";
+import {
+  AUTO_TRANSLATION_TOOL,
+  TRANSLATION_TOOL,
+  buildAutoSystemPrompt,
+  buildAutoUserMessage,
+  buildSystemPrompt,
+  buildUserMessage,
+  makeStartCaser,
+} from "./prompt";
+import type { SourceLang, TranslateRequest, TranslateResult, TranslateStreamEvent, Translator } from "./types";
 
 export const DEFAULT_TRANSLATE_MODEL = "claude-haiku-5-5";
 
 type Usage = NonNullable<TranslateResult["usage"]>;
 
 interface AnthropicResponse {
-  content?: { type: string; text?: string; input?: { translation?: unknown } }[];
+  content?: { type: string; text?: string; input?: { translation?: unknown; source_language?: unknown } }[];
   model?: string;
   stop_reason?: string;
   usage?: {
@@ -29,7 +37,14 @@ interface Attempt {
   model: string;
   usage: Usage;
   firstDeltaMs?: number;
+  /** Auto mode: what the model said the phrase was spoken in. */
+  sourceLang?: SourceLang;
 }
+
+const asSourceLang = (v: unknown): SourceLang | undefined => (v === "en" || v === "es" || v === "mixed" ? v : undefined);
+
+/** What the stream reports to translateStream, in order. */
+type StreamPiece = { type: "delta"; text: string } | { type: "source"; lang: SourceLang };
 
 const emptyUsage = (): Usage => ({ inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 });
 
@@ -43,11 +58,14 @@ const emptyUsage = (): Usage => ({ inputTokens: 0, outputTokens: 0, cacheReadTok
  */
 export class ClaudeTranslator implements Translator {
   private readonly system: string;
+  private readonly autoSystem: string;
 
   constructor(
     private readonly opts: { apiKey: string; model?: string; glossary?: Glossary },
   ) {
-    this.system = buildSystemPrompt(opts.glossary ?? loadDefaultGlossary());
+    const glossary = opts.glossary ?? loadDefaultGlossary();
+    this.system = buildSystemPrompt(glossary);
+    this.autoSystem = buildAutoSystemPrompt(glossary);
   }
 
   private get model() {
@@ -60,6 +78,7 @@ export class ClaudeTranslator implements Translator {
     const text = makeStartCaser(req.context)(cleaned.text).trim();
     return {
       text,
+      sourceLang: req.direction ? undefined : a.sourceLang,
       model: a.model,
       latencyMs,
       firstDeltaMs: a.firstDeltaMs,
@@ -93,6 +112,7 @@ export class ClaudeTranslator implements Translator {
     const value = tool?.input?.translation;
     return {
       raw: typeof value === "string" ? value : "",
+      sourceLang: asSourceLang(tool?.input?.source_language),
       complete: body.stop_reason === "tool_use" && typeof value === "string",
       stopReason: body.stop_reason,
       model: body.model ?? this.model,
@@ -106,6 +126,13 @@ export class ClaudeTranslator implements Translator {
   }
 
   private post(text: string, req: TranslateRequest, stream: boolean, tokenFactor: number, signal?: AbortSignal) {
+    // Fixed direction (/converse) keeps its own prompt and tool; auto mode lets the model decide the direction.
+    const auto = !req.direction;
+    const system = auto ? this.autoSystem : this.system;
+    const tool = auto ? AUTO_TRANSLATION_TOOL : TRANSLATION_TOOL;
+    const user = req.direction
+      ? buildUserMessage(text, req.direction.to, req.context)
+      : buildAutoUserMessage(text, req.hint, req.context);
     return fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       signal,
@@ -120,16 +147,16 @@ export class ClaudeTranslator implements Translator {
         // Generous: the budget is a ceiling, not a target, and a cut-off translation is the worst outcome. The tool
         // call's JSON wrapper and Spanish (~1.3x the tokens of English) both need headroom.
         max_tokens: Math.min(8192, Math.max(1024, text.length * 3) * tokenFactor),
-        system: [{ type: "text", text: this.system, cache_control: { type: "ephemeral" } }],
-        tools: [TRANSLATION_TOOL],
-        tool_choice: { type: "tool", name: TRANSLATION_TOOL.name },
-        messages: [{ role: "user", content: buildUserMessage(text, req.direction.to, req.context) }],
+        system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
+        tools: [tool],
+        tool_choice: { type: "tool", name: tool.name },
+        messages: [{ role: "user", content: user }],
       }),
     });
   }
 
   /** One streaming attempt. Yields display deltas; the generator's return value says whether it finished cleanly. */
-  private async *streamAttempt(req: TranslateRequest, text: string, signal?: AbortSignal): AsyncGenerator<string, Attempt> {
+  private async *streamAttempt(req: TranslateRequest, text: string, signal?: AbortSignal): AsyncGenerator<StreamPiece, Attempt> {
     const t0 = performance.now();
     const res = await this.post(text, req, true, 1, signal);
     if (!res.ok || !res.body) {
@@ -140,6 +167,9 @@ export class ClaudeTranslator implements Translator {
     const caser = makeStartCaser(req.context);
     const guard = new LeakGuard();
     const field = new JsonStringField("translation");
+    const srcField = new JsonStringField("source_language");
+    let srcText = "";
+    let sourceLang: SourceLang | undefined;
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buf = "";
@@ -151,7 +181,7 @@ export class ClaudeTranslator implements Translator {
     const usage = emptyUsage();
 
     // Server-sent events: blocks separated by a blank line, each with "event:" and "data:" lines.
-    const handle = function* (block: string): Generator<string> {
+    const handle = function* (block: string): Generator<StreamPiece> {
       const dataLine = block.split("\n").find((l) => l.startsWith("data:"));
       if (!dataLine) return;
       const ev = JSON.parse(dataLine.slice(5).trim()) as {
@@ -169,10 +199,18 @@ export class ClaudeTranslator implements Translator {
       } else if (ev.type === "content_block_delta" && ev.delta?.type === "input_json_delta") {
         const frag = ev.delta.partial_json ?? "";
         json += frag;
+        if (!req.direction && !sourceLang) {
+          srcText += srcField.push(frag);
+          const l = srcField.done ? asSourceLang(srcText) : undefined;
+          if (l) {
+            sourceLang = l;
+            yield { type: "source", lang: l };
+          }
+        }
         const shown = guard.push(field.push(frag));
         if (shown) {
           firstDeltaMs ??= performance.now() - t0;
-          yield caser(shown);
+          yield { type: "delta", text: caser(shown) };
         }
       } else if (ev.type === "message_delta") {
         usage.outputTokens = ev.usage?.output_tokens ?? usage.outputTokens;
@@ -202,20 +240,22 @@ export class ClaudeTranslator implements Translator {
     }
 
     const tail = guard.flush();
-    if (tail) yield caser(tail);
+    if (tail) yield { type: "delta", text: caser(tail) };
 
     let raw = "";
     let parsed = false;
     try {
-      const v = (JSON.parse(json) as { translation?: unknown }).translation;
+      const o = JSON.parse(json) as { translation?: unknown; source_language?: unknown };
+      const v = o.translation;
       if (typeof v === "string") {
         raw = v;
         parsed = true;
       }
+      if (!req.direction) sourceLang = asSourceLang(o.source_language) ?? sourceLang;
     } catch {
       /* incomplete JSON: the stream was cut */
     }
-    return { raw, complete: sawStop && parsed && stopReason === "tool_use", stopReason, model, usage, firstDeltaMs };
+    return { raw, complete: sawStop && parsed && stopReason === "tool_use", stopReason, model, usage, firstDeltaMs, sourceLang };
   }
 
   async *translateStream(req: TranslateRequest, opts?: { signal?: AbortSignal }): AsyncGenerator<TranslateStreamEvent> {
@@ -233,7 +273,7 @@ export class ClaudeTranslator implements Translator {
         a = n.value;
         break;
       }
-      yield { type: "delta", text: n.value };
+      yield n.value;
     }
     if (a.complete) {
       yield { type: "done", result: this.finish(req, a, performance.now() - t0, false) };

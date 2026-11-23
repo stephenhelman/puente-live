@@ -52,7 +52,10 @@ export interface DebugInfo {
   filtered: number;
   leaks: number;
   retries: number;
+  /** isAlreadyIn word-list heuristic fired (debug only; nothing is passed through any more). */
   alreadyInTarget: number;
+  /** The model returned the phrase unchanged (expected only for names and acronyms). */
+  unchanged: number;
   untranslated: number;
   /** Most recent stripped fragments / dropped phrases, newest last. */
   log: string[];
@@ -60,7 +63,7 @@ export interface DebugInfo {
 
 const EMPTY_DEBUG: DebugInfo = {
   throttleEvents: 0, maxTickGapMs: 0, hiddenMs: 0, maxChunkGapMs: 0, maxResultGapMs: 0,
-  filtered: 0, leaks: 0, retries: 0, alreadyInTarget: 0, untranslated: 0, log: [],
+  filtered: 0, leaks: 0, retries: 0, alreadyInTarget: 0, unchanged: 0, untranslated: 0, log: [],
 };
 const THROTTLE_GAP_MS = 3000;
 const LOG_LIMIT = 30;
@@ -124,7 +127,8 @@ export function useMeeting() {
         bumpDebug((d) => ({ ...d, leaks: d.leaks + 1, log: [...d.log, `leak #${e.id}: ${e.leaks.join(" | ").slice(0, 160)}`].slice(-LOG_LIMIT) }));
       } else if (e.kind === "retry") {
         bumpDebug((d) => ({ ...d, retries: d.retries + 1, log: [...d.log, `retry #${e.id} (${e.why})`].slice(-LOG_LIMIT) }));
-      } else if (e.kind === "passthrough") bumpDebug((d) => ({ ...d, alreadyInTarget: d.alreadyInTarget + 1 }));
+      } else if (e.kind === "already-hint") bumpDebug((d) => ({ ...d, alreadyInTarget: d.alreadyInTarget + 1 }));
+      else if (e.kind === "unchanged") bumpDebug((d) => ({ ...d, unchanged: d.unchanged + 1 }));
       else if (e.kind === "untranslated") bumpDebug((d) => ({ ...d, untranslated: d.untranslated + 1 }));
     },
     [bumpDebug],
@@ -136,7 +140,7 @@ export function useMeeting() {
         {
           contextPhrases: CONTEXT_PHRASES,
           translate: (c) =>
-            streamTranslate(c.text, c.direction, c.onText, c.signal, c.context, c.onResult),
+            streamTranslate(c.text, { auto: true, hint: c.hint }, c.onText, c.signal, c.context, c.onResult, c.onSource),
         },
         { onChange: (list) => setEntries(list), onEvent: onPipelineEvent },
       ),
@@ -148,7 +152,7 @@ export function useMeeting() {
       if (e.endedAtLocal !== undefined) recordTiming("phrase", e.emittedAtLocal - e.endedAtLocal);
       const ended = e.endedAtLocal;
       pipeline.add(
-        { source: e.source, lang: e.lang, text: e.text, spokenAt: e.spokenAt, alreadyInTarget: e.alreadyInTarget },
+        { source: e.source, lang: e.lang, text: e.text, spokenAt: e.spokenAt, alreadyHint: e.alreadyHint },
         () => ended !== undefined && recordTiming("first", performance.now() - ended),
         () => ended !== undefined && recordTiming("done", performance.now() - ended),
       );

@@ -3,7 +3,7 @@ import { CaptionPipeline, type PhraseInput, type TranslateCall, type TranslateFn
 import { toText, type CaptionEntry } from "./transcript";
 
 const phrase = (text: string, over: Partial<PhraseInput> = {}): PhraseInput => ({
-  source: "meeting", lang: "es", text, spokenAt: 1_000, alreadyInTarget: false, ...over,
+  source: "meeting", lang: "es", text, spokenAt: 1_000, ...over,
 });
 
 /** A translate function whose requests the test resolves by hand. */
@@ -67,13 +67,55 @@ describe("caption pipeline", () => {
     expect(p.entries.map((e) => e.at)).toEqual([5_000, 9_000]);
   });
 
-  it("passes an already-in-target phrase through with no API call", async () => {
-    const fn = vi.fn<TranslateFn>();
-    const p = new CaptionPipeline({ translate: fn }, { onChange: () => {} });
-    p.add(phrase("we have to send the form", { lang: "es", alreadyInTarget: true }));
+  it("never passes a phrase through: an already-in-target hint still goes to the model, which decides the direction", async () => {
+    const m = manual();
+    const events: string[] = [];
+    const p = new CaptionPipeline({ translate: m.fn }, { onChange: () => {}, onEvent: (e) => events.push(e.kind) });
+    // Deepgram tagged this English sentence "es", and the word-list heuristic fired. Both are only hints.
+    p.add(phrase("we have to send the form", { lang: "es", alreadyHint: true }));
+    await tick();
+    expect(m.calls).toHaveLength(1);
+    expect(m.calls[0]!.call.hint).toBe("es");
+    m.calls[0]!.call.onSource("en");
+    m.calls[0]!.resolve("tenemos que enviar el formulario");
     await p.idle();
-    expect(fn).not.toHaveBeenCalled();
-    expect(p.entries[0]).toMatchObject({ translation: "we have to send the form", status: "done", note: "already" });
+    expect(events).toContain("already-hint");
+    expect(p.entries[0]).toMatchObject({ lang: "en", mixed: false, translation: "tenemos que enviar el formulario", status: "done" });
+    expect(p.entries[0]!.note).toBeUndefined();
+  });
+
+  it("takes the language tag from the model: Spanish tagged en becomes es", async () => {
+    const m = manual();
+    const p = new CaptionPipeline({ translate: m.fn }, { onChange: () => {} });
+    p.add(phrase("necesitamos las actas", { lang: "en" }));
+    await tick();
+    m.calls[0]!.call.onSource("es");
+    m.calls[0]!.resolve("we need the minutes");
+    await p.idle();
+    expect(p.entries[0]).toMatchObject({ lang: "es", translation: "we need the minutes" });
+  });
+
+  it("mixed keeps the recognizer's majority as the tag and flags the entry", async () => {
+    const m = manual();
+    const p = new CaptionPipeline({ translate: m.fn }, { onChange: () => {} });
+    p.add(phrase("vamos a hacer el meeting con el board", { lang: "es" }));
+    await tick();
+    m.calls[0]!.call.onSource("mixed");
+    m.calls[0]!.resolve("we are going to hold the meeting with the board");
+    await p.idle();
+    expect(p.entries[0]).toMatchObject({ lang: "es", mixed: true });
+  });
+
+  it("counts a translation identical to the original (debug only; it is still shown)", async () => {
+    const m = manual();
+    const events: string[] = [];
+    const p = new CaptionPipeline({ translate: m.fn }, { onChange: () => {}, onEvent: (e) => events.push(e.kind) });
+    p.add(phrase("NBDC", { lang: "en" }));
+    await tick();
+    m.calls[0]!.resolve("NBDC");
+    await p.idle();
+    expect(events).toContain("unchanged");
+    expect(p.entries[0]).toMatchObject({ translation: "NBDC", status: "done" });
   });
 
   it("retries an empty translation once, then shows the original marked untranslated", async () => {
@@ -137,12 +179,12 @@ describe("transcript", () => {
     const base: CaptionEntry = { id: 1, source: "meeting", at: 2_000, lang: "es", original: "dos", translation: "", status: "translating" };
     const entries: CaptionEntry[] = [
       base,
-      { ...base, id: 2, at: 1_000, original: "uno", translation: "we need it", note: "already", status: "done" },
+      { ...base, id: 2, at: 1_000, original: "uno", translation: "we need it", status: "done" },
       { ...base, id: 3, at: 3_000, original: "ajá", translation: "ajá", note: "untranslated", status: "done" },
     ];
     const text = toText(entries);
     expect(text.indexOf("uno")).toBeLessThan(text.indexOf("dos"));
-    expect(text).toContain("uno (already in English)");
+    expect(text).toContain("-> we need it");
     expect(text).toContain("ajá (untranslated)");
     expect(text).toMatch(/dos\n {2}-> \(not translated\)/);
   });
