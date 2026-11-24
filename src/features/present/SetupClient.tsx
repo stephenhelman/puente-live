@@ -4,7 +4,15 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { GLOSSARY_PROFILES, type GlossaryProfile } from "@/engine";
 import { listAudioInputs, openInput, type AudioInputInfo } from "@/features/audio/inputDevice";
 import { meterPosition, rmsLevel } from "@/features/audio/level";
-import { buildPresentQuery, parseSceneList, PRESENT_DEFAULTS, PRESENT_RANGES, type Align, type Bg } from "./params";
+import CaptionStrip from "./CaptionStrip";
+import { buildCaptionView } from "./captionView";
+import { buildPresentQuery, COLOR_NAMES, parseColor, parseSceneList, PRESENT_DEFAULTS, PRESENT_RANGES, type Align, type Bg, type CaptionStyle } from "./params";
+import styles from "./present.module.css";
+
+const SAMPLE_VIEW = buildCaptionView(
+  [{ id: 1, source: "meeting", at: 1, lang: "en", original: "The factor levels were checked this morning", translation: "Los niveles de factor se revisaron esta mañana", status: "done" }],
+  "",
+);
 
 const MAC_FLAGS = 'open -a OBS --args --enable-media-stream --use-fake-ui-for-media-stream';
 const WIN_TARGET = '"C:\\Program Files\\obs-studio\\bin\\64bit\\obs64.exe" --enable-media-stream --use-fake-ui-for-media-stream';
@@ -20,6 +28,9 @@ export default function SetupClient() {
   const [lines, setLines] = useState(PRESENT_DEFAULTS.lines);
   const [align, setAlign] = useState<Align>(PRESENT_DEFAULTS.align);
   const [bg, setBg] = useState<Bg>(PRESENT_DEFAULTS.bg);
+  const [style, setStyle] = useState<CaptionStyle>(PRESENT_DEFAULTS.style);
+  const [color, setColor] = useState(PRESENT_DEFAULTS.color);
+  const [opacity, setOpacity] = useState(PRESENT_DEFAULTS.opacity);
   const [full, setFull] = useState("");
   const [clearSec, setClearSec] = useState(PRESENT_DEFAULTS.clearSec);
   const [profile, setProfile] = useState<GlossaryProfile>("hemophilia");
@@ -38,8 +49,8 @@ export default function SetupClient() {
     if (profile !== "hemophilia") extras.profile = profile;
     // Anything typed in "extra" (fin=3000&ep=250): added as is, but only parameters (name=value pairs), never markup.
     for (const [k, v] of new URLSearchParams(extra.replace(/^\?/, ""))) if (/^[a-z]{1,12}$/i.test(k)) extras[k] = v;
-    return `${origin}/present${buildPresentQuery({ device, size, lines, align, bg, full: parseSceneList(full), clearSec }, extras)}`;
-  }, [origin, device, size, lines, align, bg, full, clearSec, profile, extra]);
+    return `${origin}/present${buildPresentQuery({ device, size, lines, align, bg, full: parseSceneList(full), clearSec, style, color, opacity }, extras)}`;
+  }, [origin, device, size, lines, align, bg, full, clearSec, style, color, opacity, profile, extra]);
 
   async function detect() {
     setDetectError(false);
@@ -95,6 +106,17 @@ export default function SetupClient() {
           <label>Position <select value={align} onChange={(e) => setAlign(e.target.value as Align)}><option value="bottom">bottom</option><option value="top">top</option><option value="center">center</option></select></label>
           <label>Background <select value={bg} onChange={(e) => setBg(e.target.value as Bg)}><option value="transparent">transparent</option><option value="dark">dark strip</option></select></label>
           <label>Clear after (s) <input type="number" min={0} max={PRESENT_RANGES.clearSec.max} value={clearSec} onChange={(e) => setClearSec(Number(e.target.value))} /></label>
+        </div>
+        <div className="row">
+          <label>Caption style <select value={style} onChange={(e) => setStyle(e.target.value as CaptionStyle)}><option value="box">box (dark box behind the words)</option><option value="outline">outline</option><option value="none">none</option></select></label>
+          <label>Text color <input list="present-colors" value={color.replace(/^#/, "")} onChange={(e) => setColor(parseColor(e.target.value))} placeholder="white or ffd400" size={12} /></label>
+          <datalist id="present-colors">{COLOR_NAMES.map((c) => <option key={c} value={c} />)}</datalist>
+          <label>Box opacity <input type="number" step={0.05} min={PRESENT_RANGES.opacity.min} max={PRESENT_RANGES.opacity.max} value={opacity} disabled={style !== "box"} onChange={(e) => setOpacity(Number(e.target.value) || PRESENT_DEFAULTS.opacity)} /></label>
+        </div>
+        <div className="row">
+          {(["#e9edf2", "#1b2430"] as const).map((back) => (
+            <Preview key={back} back={back} size={size} lines={lines} align={align} bg={bg} style={style} color={color} opacity={opacity} />
+          ))}
         </div>
         <label>
           Full-screen caption scenes (OBS scene names, separated by |):{" "}
@@ -198,6 +220,27 @@ function InputRow({ d, n, onUse }: { d: AudioInputInfo; n: number; onUse: (label
           <i style={{ display: "block", height: "100%", width: `${Math.round(level * 100)}%`, background: "#3fb950" }} />
         </span>
       )}
+    </div>
+  );
+}
+
+/** The real caption markup and CSS, scaled down, over a sample slide color (the preview of ?style / ?color / ?opacity). */
+function Preview(p: { back: string; size: number; lines: number; align: Align; bg: Bg; style: CaptionStyle; color: string; opacity: number }) {
+  const px = Math.max(10, Math.round(p.size * 0.3));
+  const height = Math.round(px * (p.lines * 1.2 + 1.2) + px * 1.2);
+  return (
+    // transform makes the fixed-position caption root fill this box instead of the window
+    <div style={{ position: "relative", transform: "translateZ(0)", overflow: "hidden", width: 380, height, borderRadius: 8, background: p.back }}>
+      <div
+        className={styles.root}
+        data-layout="strip"
+        data-bg={p.bg}
+        data-align={p.align}
+        data-style={p.style}
+        style={{ "--size": `${px}px`, "--lines": p.lines, "--color": p.color, "--boxa": p.opacity } as React.CSSProperties}
+      >
+        <CaptionStrip view={SAMPLE_VIEW} />
+      </div>
     </div>
   );
 }

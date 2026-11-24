@@ -55,7 +55,8 @@ function PresentScreen({ search }: { search: string }) {
       data-layout={layout}
       data-bg={p.bg}
       data-align={p.align}
-      style={{ "--size": `${size}px`, "--lines": lines } as CSSProperties}
+      data-style={p.style}
+      style={{ "--size": `${size}px`, "--lines": lines, "--color": p.color, "--boxa": p.opacity } as CSSProperties}
     >
       <CaptionStrip view={view} />
       <Controls ctrl={ctrl} state={state} params={p} />

@@ -5,12 +5,12 @@ import { buildPresentQuery, layoutForScene, parsePresentParams, parseSceneList, 
 describe("/present URL parameters", () => {
   it("no parameters: the documented defaults (transparent, bottom, 2 lines, 6 s, controls on)", () => {
     expect(parsePresentParams("")).toEqual(PRESENT_DEFAULTS);
-    expect(PRESENT_DEFAULTS).toEqual({ device: "", size: 56, lines: 2, align: "bottom", bg: "transparent", full: [], clearSec: 6, controls: true });
+    expect(PRESENT_DEFAULTS).toEqual({ device: "", size: 56, lines: 2, align: "bottom", bg: "transparent", full: [], clearSec: 6, controls: true, style: "box", color: "white", opacity: 0.75 });
   });
 
   it("reads every parameter", () => {
     const p = parsePresentParams("device=BlackHole%202ch&size=72&lines=3&align=top&bg=dark&full=Captions+Only|Q%26A&clear=10&controls=0");
-    expect(p).toEqual({ device: "BlackHole 2ch", size: 72, lines: 3, align: "top", bg: "dark", full: ["Captions Only", "Q&A"], clearSec: 10, controls: false });
+    expect(p).toEqual({ device: "BlackHole 2ch", size: 72, lines: 3, align: "top", bg: "dark", full: ["Captions Only", "Q&A"], clearSec: 10, controls: false, style: "box", color: "white", opacity: 0.75 });
   });
 
   it("clamps numbers, ignores junk, and never throws on odd values", () => {
@@ -32,12 +32,41 @@ describe("/present URL parameters", () => {
   it("buildPresentQuery writes only what differs from the defaults, and round-trips", () => {
     expect(buildPresentQuery({})).toBe("");
     expect(buildPresentQuery(PRESENT_DEFAULTS)).toBe("");
-    const want = { device: "CABLE Output", size: 80, lines: 3, align: "center" as const, bg: "dark" as const, full: ["Captions Only", "Q&A"], clearSec: 0, controls: false };
+    const want = { device: "CABLE Output", size: 80, lines: 3, align: "center" as const, bg: "dark" as const, full: ["Captions Only", "Q&A"], clearSec: 0, controls: false, style: "outline" as const, color: "#ffd400", opacity: 0.5 };
     const q = buildPresentQuery(want, { profile: "chapter", fin: "3000", empty: "  " });
     expect(parsePresentParams(q)).toEqual(want);
     expect(new URLSearchParams(q).get("profile")).toBe("chapter");
     expect(new URLSearchParams(q).get("fin")).toBe("3000");
     expect(new URLSearchParams(q).has("empty")).toBe(false);
+  });
+});
+
+describe("caption style parameters", () => {
+  it("?style= accepts box/outline/none, anything else is the box default", () => {
+    expect(parsePresentParams("style=outline").style).toBe("outline");
+    expect(parsePresentParams("style=none").style).toBe("none");
+    expect(parsePresentParams("style=glow").style).toBe("box");
+    expect(parsePresentParams("").style).toBe("box");
+  });
+  it("?color= takes a known name or hex without #; junk (including CSS injection) falls back to white", () => {
+    expect(parsePresentParams("color=yellow").color).toBe("yellow");
+    expect(parsePresentParams("color=YELLOW").color).toBe("yellow");
+    expect(parsePresentParams("color=ffd400").color).toBe("#ffd400");
+    expect(parsePresentParams("color=fd0").color).toBe("#fd0");
+    for (const bad of ["#ffd400", "ffd40", "gggggg", "notacolor", "red;background:url(x)", "url(x)", ""]) {
+      expect(parsePresentParams(`color=${encodeURIComponent(bad)}`).color).toBe("white");
+    }
+  });
+  it("?opacity= is clamped to 0.3-1.0, junk is 0.75", () => {
+    expect(parsePresentParams("opacity=0.5").opacity).toBe(0.5);
+    expect(parsePresentParams("opacity=0").opacity).toBe(0.3);
+    expect(parsePresentParams("opacity=7").opacity).toBe(1);
+    expect(parsePresentParams("opacity=abc").opacity).toBe(0.75);
+    expect(parsePresentParams("opacity=").opacity).toBe(0.75);
+  });
+  it("buildPresentQuery omits the defaults and writes color without #", () => {
+    expect(buildPresentQuery({ style: "box", color: "white", opacity: 0.75 })).toBe("");
+    expect(buildPresentQuery({ style: "none", color: "#ffd400", opacity: 0.5 })).toBe("?style=none&color=ffd400&opacity=0.5");
   });
 });
 

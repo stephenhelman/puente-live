@@ -20,7 +20,7 @@ export default function CaptionStrip({ view }: { view: CaptionView }) {
           {view.lines.map((l) => (
             <Fragment key={l.id}>
               {l.tag && <span className={styles.tag}>{l.lang.toUpperCase()}</span>}
-              <span lang={l.lang}>{l.text} </span>
+              <span className={styles.box} lang={l.lang}>{l.text} </span>
             </Fragment>
           ))}
         </p>

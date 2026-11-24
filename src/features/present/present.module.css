@@ -10,7 +10,9 @@
   position: fixed;
   inset: 0;
   overflow: hidden;
-  color: #fff;
+  color: var(--color, #fff);
+  --color: #fff;
+  --boxa: 0.75;
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   /* --size and --lines are set inline from ?size= and ?lines= (the full-screen layout sets larger ones) */
   --lh: 1.2;
@@ -64,12 +66,13 @@
   height: var(--origh);
   font-size: var(--origsize);
   line-height: var(--origh);
-  color: #d6dde5;
+  color: color-mix(in srgb, var(--color) 78%, #9aa4ae);
   white-space: nowrap;
   overflow: hidden;
   font-weight: 500;
   text-shadow: 0 1px 4px rgba(0, 0, 0, 0.95), 0 0 2px rgba(0, 0, 0, 0.9);
 }
+.trans p { color: var(--color); }
 
 /* The translation: exactly --lines lines tall, anchored to the bottom, so new text pushes older text out of the top. */
 .trans {
@@ -86,6 +89,25 @@
   font-weight: 700;
   overflow-wrap: anywhere;
   text-shadow: 0 2px 6px rgba(0, 0, 0, 0.95), 0 0 3px rgba(0, 0, 0, 0.9);
+}
+
+/* ?style=: readability over any slide. The box is inline padding + background only: it never changes a line's position. */
+.box { color: inherit; }
+.root[data-style="box"] .box {
+  background: rgba(0, 0, 0, var(--boxa));
+  padding: 0.15em 0.4em;
+  border-radius: 0.2em;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+.root[data-style="box"] .orig,
+.root[data-style="box"] .trans p { text-shadow: none; }
+.root[data-style="outline"] .orig,
+.root[data-style="outline"] .trans p {
+  text-shadow:
+    -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 2px 2px 0 #000,
+    0 -2px 0 #000, 0 2px 0 #000, -2px 0 0 #000, 2px 0 0 #000,
+    0 0 8px rgba(0, 0, 0, 0.9), 0 2px 12px rgba(0, 0, 0, 0.8);
 }
 
 .tag {
