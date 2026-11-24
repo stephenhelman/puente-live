@@ -14,6 +14,7 @@ import { layoutForScene, parsePresentParams, PRESENTER_TUNING, type PresentParam
 import { statusLight } from "./status";
 import { LIGHT, T, type Bi } from "./strings";
 import { usePresent } from "./usePresent";
+import "./presentPage.css";
 import styles from "./present.module.css";
 
 const noopSubscribe = () => () => {};

@@ -1,11 +1,3 @@
-/* The page is transparent: OBS composites it over the slides. Applied to the whole document (and the OBS default CSS agrees). */
-:global(html),
-:global(body) {
-  background: transparent !important;
-  margin: 0;
-  overflow: hidden;
-}
-
 .root {
   position: fixed;
   inset: 0;
