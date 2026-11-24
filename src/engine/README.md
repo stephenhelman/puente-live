@@ -159,8 +159,8 @@ Deepgram socket, `PhraseSegmenter` and translation context. Engine additions, al
 **Endpointing in continuous mode: unchanged** (400 ms, `pauseMs` 450, `quietMs` 900, 28 words / 8 s). Reasoning: it is a
 conversation-style boundary already, the phrase boundary is driven by word-timestamp gaps rather than a push-to-talk
 button, and I have no real-meeting measurements to justify a different value (the table above came from synthetic speech;
-see the meeting numbers below). Tune in the field with `/meeting?ep=&pause=`; `?max=` sets the session cap in minutes
-(default 180, warning 10 min before the end). Context sent to the translator is the last 6 phrases from the same source in
+see the meeting numbers below). Tune in the field with the URL parameters in "Tuning parameters" below; `?mins=` sets the session cap in minutes
+(default 180, warning 10 min before the end; it used to be `?max=`, which now means max words). Context sent to the translator is the last 6 phrases from the same source in
 the same direction.
 
 ### Meeting measurements (synthetic speech, real Deepgram + Claude Haiku 5.5, two concurrent streams, one forced socket drop)
@@ -200,6 +200,35 @@ from the vendor's first-word start time and the transcript is ordered by it. Aud
 was already parallel (one request and one slot per phrase); a stalled request (no progress for 20 s) is now abandoned and retried
 so it cannot hold a connection. `?debug=1` shows max speech-end-to-caption delay, throttling events, worst audio-chunk and vendor
 gaps, and a warning banner when the heartbeat ran more than 3 s late.
+
+## Tuning parameters
+
+All the numbers that decide caption speed live in `src/engine/tuning.ts` (`DEFAULT_TUNING`, `TUNING_PARAMS`,
+`applyTuningParams`). Any page can pass its own defaults (`getTuning(base)`, `getMeetingTuning(base)`) and the URL still overrides
+them. Defaults are exactly the values in the table above; a test pins them. Out-of-range numbers are clamped, junk is ignored.
+Works on `/meeting` and `/converse`.
+
+| Param | Controls | Range | Default |
+|---|---|---|---|
+| `ep` | Deepgram endpointing | 100-1500 ms | 400 |
+| `pause` | word-gap pause that ends a phrase | 150-1500 ms | 450 |
+| `max` | max words in a phrase (cut at the next vendor final) | 4-80 | 28 |
+| `age` | max age of a phrase (cut at the next vendor final) | 1000-30000 ms | 8000 |
+| `quiet` | nothing new heard for this long ends a phrase | 200-3000 ms | 900 |
+| `hold` | how long a one/two-word fragment waits to be joined | 200-5000 ms | 2500 |
+| `ctx` | earlier phrases sent to the translator | 0-6 | 6 |
+| `mins` | session length cap (`/meeting` only) | 1-600 min | 180 |
+| `profile` | glossary profile | chapter, hemophilia | page default |
+
+`/meeting?debug=1` shows the values in force, then rolling p50/p95/max over the last 200 phrases, measured **in the browser**
+(so they include the browser to server to Anthropic round trip): speech end to phrase emitted, emitted to first translated text,
+emitted to done, and the two end-to-end sums. It also shows which rule cut each phrase (`final`, `pause`, `quiet`, `maxWords`,
+`maxAge`, `hold`, `flush`), the prompt-cache read tokens of each request, and the last 8 phrases. "copy stats" copies the same
+numbers and the tuning as plain text (never any transcript text).
+
+Finding from the first runs (50 s of presenter-style speech, synthetic voice): `max` and `age` only act when Deepgram delivers a
+final result, and in continuous speech Deepgram can hold its first final for ~13 s. The first phrase (spoken at 0-4.5 s) was
+emitted at 13.4 s with defaults and with `max=14&age=4000`. Tuning the segmenter alone cannot fix that; see the panel's `cut` column.
 
 ## Glossary profiles
 

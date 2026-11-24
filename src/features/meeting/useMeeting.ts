@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CaptureError, captureMeetingAudio, captureMic, type CaptureFailure } from "@/features/audio/capture";
 import { TokenError } from "@/features/audio/token";
-import { percentile } from "@/features/debug/stats";
 import { createWorkerTimers, type DisposableTimers } from "@/features/audio/workerTimers";
 import { streamTranslate } from "@/features/converse/streamTranslate";
 import { DEFAULT_PROFILE, glossaryKeyterms, loadGlossary, type GlossaryProfile } from "@/engine";
@@ -11,6 +10,7 @@ import { CaptionSource, type PhraseEvent, type SourceStatus } from "./captionSou
 import { CaptionPipeline, type PipelineEvent } from "./pipeline";
 import type { CaptionEntry, SourceId } from "./transcript";
 import { getMeetingTuning, getProfile, type MeetingTuning } from "./tuning";
+import type { PhraseTiming } from "./timing";
 
 export type Phase = "idle" | "starting" | "live" | "stopping";
 export type MeetingErrorKind = CaptureFailure | "offline" | "token" | "stt";
@@ -19,28 +19,6 @@ export interface MeetingError {
   source: SourceId;
 }
 export type SourceState = SourceStatus | "off";
-
-export interface LatencyStats {
-  n: number;
-  /** ms from the speaker's last word to the phrase leaving the segmenter. */
-  phraseP50: number | null;
-  phraseP95: number | null;
-  /** ms from the speaker's last word to the first translated text. */
-  firstP50: number | null;
-  firstP95: number | null;
-  /** ms from the speaker's last word to the finished translation. */
-  doneP50: number | null;
-  doneP95: number | null;
-  /** Worst-case delays (ms from the speaker's last word): the number that shows a stall, which percentiles hide. */
-  phraseMax: number | null;
-  firstMax: number | null;
-  doneMax: number | null;
-}
-
-const EMPTY_STATS: LatencyStats = {
-  n: 0, phraseP50: null, phraseP95: null, firstP50: null, firstP95: null, doneP50: null, doneP95: null,
-  phraseMax: null, firstMax: null, doneMax: null,
-};
 
 /** ?debug=1 diagnostics for the field: is the page being throttled, and what did the filters do. */
 export interface DebugInfo {
@@ -68,7 +46,7 @@ const EMPTY_DEBUG: DebugInfo = {
 };
 const THROTTLE_GAP_MS = 3000;
 const LOG_LIMIT = 30;
-const CONTEXT_PHRASES = 6;
+const TIMING_KEEP = 500; // phrases of timing kept (the stats use the newest TIMING_WINDOW)
 
 /** `defaultProfile`: the glossary profile this page uses unless the URL says `?profile=`. /meeting: "chapter". */
 export function useMeeting(defaultProfile: GlossaryProfile = DEFAULT_PROFILE) {
@@ -79,7 +57,9 @@ export function useMeeting(defaultProfile: GlossaryProfile = DEFAULT_PROFILE) {
   const [error, setError] = useState<MeetingError | null>(null);
   const [elapsedMs, setElapsedMs] = useState(0);
   const [useMic, setUseMic] = useState(true);
-  const [stats, setStats] = useState<LatencyStats>(EMPTY_STATS);
+  const [timings, setTimings] = useState<PhraseTiming[]>([]);
+  const [tuning, setTuning] = useState<MeetingTuning | null>(null);
+  const [profile, setProfile] = useState<GlossaryProfile>(defaultProfile);
   const [downloaded, setDownloaded] = useState(0);
   const [debugInfo, setDebugInfo] = useState<DebugInfo>(EMPTY_DEBUG);
 
@@ -92,7 +72,7 @@ export function useMeeting(defaultProfile: GlossaryProfile = DEFAULT_PROFILE) {
   const [limits, setLimits] = useState<{ maxSessionMs: number; warnAtMs: number } | null>(null);
   const mounted = useRef(true);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
-  const timings = useRef<{ phrase: number[]; first: number[]; done: number[] }>({ phrase: [], first: [], done: [] });
+  const timingsRef = useRef<PhraseTiming[]>([]);
   const timersRef = useRef<DisposableTimers | null>(null);
 
   const setPhase = useCallback((p: Phase) => {
@@ -107,23 +87,7 @@ export function useMeeting(defaultProfile: GlossaryProfile = DEFAULT_PROFILE) {
     [bumpDebug],
   );
 
-  const recordTiming = useCallback((kind: "phrase" | "first" | "done", ms: number) => {
-    timings.current[kind].push(ms);
-    const t = timings.current;
-    const max = (a: number[]) => (a.length ? Math.max(...a) : null);
-    setStats({
-      n: t.done.length,
-      phraseP50: percentile(t.phrase, 50),
-      phraseP95: percentile(t.phrase, 95),
-      firstP50: percentile(t.first, 50),
-      firstP95: percentile(t.first, 95),
-      doneP50: percentile(t.done, 50),
-      doneP95: percentile(t.done, 95),
-      phraseMax: max(t.phrase),
-      firstMax: max(t.first),
-      doneMax: max(t.done),
-    });
-  }, []);
+  const publishTimings = useCallback(() => setTimings(timingsRef.current.slice()), []);
 
   const onPipelineEvent = useCallback(
     (e: PipelineEvent) => {
@@ -143,7 +107,7 @@ export function useMeeting(defaultProfile: GlossaryProfile = DEFAULT_PROFILE) {
     () =>
       new CaptionPipeline(
         {
-          contextPhrases: CONTEXT_PHRASES,
+          contextPhrases: 6, // the session's `?ctx=` is applied in start() via setContextPhrases
           translate: (c) =>
             streamTranslate(c.text, { auto: true, hint: c.hint, profile: c.profile }, c.onText, c.signal, c.context, c.onResult, c.onSource),
         },
@@ -154,15 +118,34 @@ export function useMeeting(defaultProfile: GlossaryProfile = DEFAULT_PROFILE) {
 
   const onPhrase = useCallback(
     (e: PhraseEvent) => {
-      if (e.endedAtLocal !== undefined) recordTiming("phrase", e.emittedAtLocal - e.endedAtLocal);
-      const ended = e.endedAtLocal;
-      pipeline.add(
+      const rec: PhraseTiming = {
+        id: 0,
+        cut: e.cut,
+        words: e.text.split(/\s+/).filter(Boolean).length,
+        speechToEmit: e.endedAtLocal !== undefined ? Math.max(0, e.emittedAtLocal - e.endedAtLocal) : null,
+        emitToFirst: null,
+        emitToDone: null,
+        cacheRead: null,
+        inputTokens: null,
+        retried: false,
+      };
+      timingsRef.current = [...timingsRef.current, rec].slice(-TIMING_KEEP);
+      rec.id = pipeline.add(
         { source: e.source, lang: e.lang, text: e.text, spokenAt: e.spokenAt, alreadyHint: e.alreadyHint, profile: profileRef.current },
-        () => ended !== undefined && recordTiming("first", performance.now() - ended),
-        () => ended !== undefined && recordTiming("done", performance.now() - ended),
+        () => {
+          rec.emitToFirst = performance.now() - e.emittedAtLocal;
+          publishTimings();
+        },
+        (r) => {
+          rec.emitToDone = performance.now() - e.emittedAtLocal;
+          if (r?.usage) Object.assign(rec, { cacheRead: r.usage.cacheReadTokens, inputTokens: r.usage.inputTokens });
+          rec.retried = !!r?.retried;
+          publishTimings();
+        },
       );
+      publishTimings();
     },
-    [pipeline, recordTiming],
+    [pipeline, publishTimings],
   );
 
   const onTail = useCallback((id: SourceId, text: string) => {
@@ -244,7 +227,10 @@ export function useMeeting(defaultProfile: GlossaryProfile = DEFAULT_PROFILE) {
     setPhase("starting");
     const tuning = getMeetingTuning();
     tuningRef.current = tuning;
+    setTuning(tuning);
+    pipeline.setContextPhrases(tuning.contextPhrases);
     profileRef.current = getProfile(defaultProfile);
+    setProfile(profileRef.current);
     keytermsRef.current = glossaryKeyterms(loadGlossary(profileRef.current));
     setLimits({ maxSessionMs: tuning.maxSessionMs, warnAtMs: tuning.warnAtMs });
     // The picker needs the click's user activation, so it is the first await.
@@ -307,7 +293,7 @@ export function useMeeting(defaultProfile: GlossaryProfile = DEFAULT_PROFILE) {
       }));
       if (ms >= tuning.maxSessionMs) void stop();
     }, 1000);
-  }, [bumpDebug, defaultProfile, setPhase, startSource, stop, useMic]);
+  }, [bumpDebug, defaultProfile, pipeline, setPhase, startSource, stop, useMic]);
 
   /** After the user ended screen sharing: pick the meeting audio again without stopping the session. */
   const reshareMeeting = useCallback(async () => {
@@ -332,8 +318,8 @@ export function useMeeting(defaultProfile: GlossaryProfile = DEFAULT_PROFILE) {
     if (phaseRef.current !== "idle") return;
     pipeline.clear();
     setDebugInfo(EMPTY_DEBUG);
-    timings.current = { phrase: [], first: [], done: [] };
-    setStats(EMPTY_STATS);
+    timingsRef.current = [];
+    setTimings([]);
     setDownloaded(0);
     setError(null);
   }, [pipeline]);
@@ -370,7 +356,7 @@ export function useMeeting(defaultProfile: GlossaryProfile = DEFAULT_PROFILE) {
   }, [phase, unsaved]);
 
   return {
-    phase, entries, tails, sources, error, elapsedMs, useMic, setUseMic, stats, unsaved, debugInfo,
+    phase, entries, tails, sources, error, elapsedMs, useMic, setUseMic, timings, tuning, profile, unsaved, debugInfo,
     maxSessionMs: limits?.maxSessionMs,
     warnAtMs: limits?.warnAtMs,
     start, stop, clear, retryEntry, reshareMeeting, markDownloaded, dismissError,

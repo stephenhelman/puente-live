@@ -11,8 +11,17 @@ export {
   isHoldable,
   type SegmenterOptions,
   type PhraseInfo,
+  type CutReason,
 } from "./stt/segmenter";
 export { detectLang, directionFor, normalizeLang, classifyPhrase, isAlreadyIn, textScores, type PhraseVerdict } from "./stt/language";
+export {
+  DEFAULT_TUNING,
+  TUNING_PARAMS,
+  applyTuningParams,
+  describeTuning,
+  type Tuning,
+  type TuningParam,
+} from "./tuning";
 export { GLOBAL_TIMERS, type Timers } from "./stt/timers";
 export {
   startContinuousStt,

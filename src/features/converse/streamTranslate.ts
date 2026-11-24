@@ -4,6 +4,15 @@ import { hardNavigate } from "@/lib/nav";
 export class NetworkError extends Error {}
 export class TranslateFailed extends Error {}
 
+/** What the server reports once a translation is final (a subset of the engine's TranslateResult). */
+export interface StreamResult {
+  leaks?: string[];
+  retried?: boolean;
+  stopReason?: string;
+  /** Token counts for the request; cacheReadTokens > 0 means the prompt cache was hit. */
+  usage?: { inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number };
+}
+
 /** Auto mode: no one says which language is spoken; the model decides and translates into the other one. */
 export interface AutoDirection {
   auto: true;
@@ -25,7 +34,7 @@ export async function streamTranslate(
   signal?: AbortSignal,
   context?: ContextPair[],
   /** Called once with the server's final result details (e.g. which leaked fragments were stripped). */
-  onResult?: (r: { leaks?: string[]; retried?: boolean; stopReason?: string }) => void,
+  onResult?: (r: StreamResult) => void,
   onSource?: (lang: SourceLang) => void,
 ): Promise<string> {
   let res: Response;
@@ -64,7 +73,7 @@ export async function streamTranslate(
         const ev = JSON.parse(line) as
           | { t: "delta"; text: string }
           | { t: "source"; lang: SourceLang }
-          | { t: "done"; result: { text: string; sourceLang?: SourceLang; leaks?: string[]; retried?: boolean; stopReason?: string } }
+          | { t: "done"; result: { text: string; sourceLang?: SourceLang } & StreamResult }
           | { t: "error"; message: string };
         if (ev.t === "delta") {
           acc += ev.text;

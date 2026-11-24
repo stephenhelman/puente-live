@@ -32,14 +32,14 @@ export const LEAK_FIXTURES = [
 /** Anthropic SSE for a forced tool call, split into the fragments the real API sends. */
 export function toolStream(
   translation: string,
-  opts: { stopReason?: string; cutAfter?: number; noStop?: boolean; source?: string } = {},
+  opts: { stopReason?: string; cutAfter?: number; noStop?: boolean; source?: string; cacheRead?: number } = {},
 ): string {
   // Auto mode lists source_language first, like the real tool schema.
   const json = JSON.stringify(opts.source ? { source_language: opts.source, translation } : { translation });
   const frags = json.match(/.{1,7}/g) ?? [];
   const keep = opts.cutAfter === undefined ? frags : frags.slice(0, opts.cutAfter);
   const ev = (type: string, data: object) => `event: ${type}\ndata: ${JSON.stringify({ type, ...data })}\n\n`;
-  let out = ev("message_start", { message: { model: "m", usage: { input_tokens: 10 } } });
+  let out = ev("message_start", { message: { model: "m", usage: { input_tokens: 10, cache_read_input_tokens: opts.cacheRead ?? 0 } } });
   out += ev("content_block_start", { index: 0, content_block: { type: "tool_use", name: "submit_translation" } });
   for (const f of keep) out += ev("content_block_delta", { index: 0, delta: { type: "input_json_delta", partial_json: f } });
   if (opts.cutAfter === undefined) {

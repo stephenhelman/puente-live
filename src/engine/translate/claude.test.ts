@@ -213,3 +213,11 @@ describe("ClaudeTranslator, glossary profiles", () => {
     expect(sys(fm)).not.toContain("Hemlibra");
   });
 });
+
+describe("ClaudeTranslator, usage for the debug readout", () => {
+  it("the done event carries the token usage, including cache reads", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(sse(toolStream("hola", { source: "en", cacheRead: 2664 }))));
+    const ev = await collect(tr().translateStream({ text: "hello", hint: "en" }));
+    expect(done(ev).usage).toMatchObject({ inputTokens: 10, cacheReadTokens: 2664, outputTokens: 5 });
+  });
+});

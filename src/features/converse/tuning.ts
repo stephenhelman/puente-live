@@ -1,37 +1,17 @@
-import { DEFAULT_SEGMENTER_OPTIONS, type SegmenterOptions } from "@/engine";
+import { applyTuningParams, DEFAULT_TUNING, type Tuning } from "@/engine";
 
 /**
- * Live-translation tuning. Rationale and measurements: src/engine/README.md, "Phrase boundaries".
+ * Live-translation tuning. The values, their ranges and the URL parameters live in the engine (src/engine/tuning.ts);
+ * rationale and measurements: src/engine/README.md, "Phrase boundaries".
  */
-export const TUNING = {
-  /** Deepgram endpointing: silence before it finalizes text and flags speech_final. */
-  endpointingMs: 400,
-  segmenter: DEFAULT_SEGMENTER_OPTIONS satisfies SegmenterOptions,
-  /** How many earlier phrases of the same turn are sent as translation context. */
-  contextPhrases: 6,
-  /** Keep capturing this long after the stop tap: the last syllable is still in the audio pipeline. */
-  stopTailMs: 300,
-};
-
-export type Tuning = typeof TUNING;
-
-function num(v: string | null, min: number, max: number): number | undefined {
-  const n = Number(v);
-  return v !== null && Number.isFinite(n) && n >= min && n <= max ? n : undefined;
-}
+export const TUNING: Tuning = DEFAULT_TUNING;
+export type { Tuning };
 
 /**
- * Field-tuning without a redeploy: /converse?ep=300&pause=450 overrides endpointing and the word-gap pause (ms).
- * Out-of-range values are ignored.
+ * Field-tuning without a redeploy: /converse?ep=300&pause=450&max=14&age=4000&quiet=600&hold=1000&ctx=3. `base` is the
+ * page's own defaults (a later page can pass different ones). Out-of-range numbers are clamped, junk is ignored.
  */
-export function getTuning(): Tuning {
-  if (typeof window === "undefined") return TUNING;
-  const q = new URLSearchParams(window.location.search);
-  const ep = num(q.get("ep"), 100, 1500);
-  const pause = num(q.get("pause"), 150, 1500);
-  return {
-    ...TUNING,
-    endpointingMs: ep ?? TUNING.endpointingMs,
-    segmenter: { ...TUNING.segmenter, pauseMs: pause ?? TUNING.segmenter.pauseMs },
-  };
+export function getTuning(base: Tuning = TUNING): Tuning {
+  if (typeof window === "undefined") return base;
+  return applyTuningParams(base, new URLSearchParams(window.location.search));
 }

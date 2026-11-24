@@ -6,6 +6,7 @@ import {
   PhraseSegmenter,
   startContinuousStt,
   type ContinuousSttSession,
+  type CutReason,
   type Lang,
   type SttResult,
   type Timers,
@@ -27,6 +28,8 @@ export interface PhraseEvent {
   lang: Lang;
   /** performance.now() estimate of when the speaker's last word ended; undefined without word timing. */
   endedAtLocal?: number;
+  /** Which segmenter rule ended the phrase (debug). */
+  cut: CutReason;
   /** performance.now() when the phrase left the segmenter. */
   emittedAtLocal: number;
   /** Wall-clock ms when the phrase began being SPOKEN (vendor first-word start time mapped to the local clock). */
@@ -96,6 +99,7 @@ export class CaptionSource {
           source: o.id,
           text,
           lang,
+          cut: info.cut,
           endedAtLocal: info.endSec !== undefined ? this.origin + info.endSec * 1000 : undefined,
           emittedAtLocal: performance.now(),
           spokenAt: info.startSec !== undefined ? this.originEpoch + info.startSec * 1000 : Date.now(),

@@ -184,6 +184,57 @@ describe("caption pipeline", () => {
   });
 });
 
+describe("translation context size (?ctx=)", () => {
+  async function withHistory(contextPhrases?: number) {
+    const m = manual();
+    const p = new CaptionPipeline({ translate: m.fn, contextPhrases }, { onChange: () => {} });
+    for (const t of ["uno", "dos", "tres", "cuatro"]) {
+      p.add(phrase(t));
+      await tick();
+      m.calls[m.calls.length - 1]!.resolve(`${t}!`);
+      await p.idle();
+    }
+    return { m, p };
+  }
+  const last = (m: ReturnType<typeof manual>) => m.calls[m.calls.length - 1]!.call.context;
+
+  it("defaults to 6 earlier phrases", async () => {
+    const { m, p } = await withHistory();
+    p.add(phrase("cinco"));
+    await tick();
+    expect(last(m).map((c) => c.source)).toEqual(["uno", "dos", "tres", "cuatro"]);
+  });
+
+  it("ctx=2 sends only the last two; ctx=0 sends none (not everything)", async () => {
+    const { m, p } = await withHistory(2);
+    p.add(phrase("cinco"));
+    await tick();
+    expect(last(m).map((c) => c.source)).toEqual(["tres", "cuatro"]);
+    p.setContextPhrases(0);
+    p.add(phrase("seis"));
+    await tick();
+    expect(last(m)).toEqual([]);
+    p.setContextPhrases(1);
+    p.add(phrase("siete"));
+    await tick();
+    expect(last(m).map((c) => c.source)).toEqual(["seis"]);
+  });
+
+  it("hands the request's token usage to the finished callback", async () => {
+    const usage = { inputTokens: 40, outputTokens: 20, cacheReadTokens: 2500, cacheWriteTokens: 0 };
+    const fn: TranslateFn = async (c) => {
+      c.onText("hi");
+      c.onResult({ usage });
+      return "hi!";
+    };
+    const p = new CaptionPipeline({ translate: fn }, { onChange: () => {} });
+    const done = vi.fn();
+    p.add(phrase("hola"), undefined, done);
+    await p.idle();
+    expect(done).toHaveBeenCalledWith({ usage });
+  });
+});
+
 describe("transcript", () => {
   it("never prints a blank translation and orders by spoken time", () => {
     const base: CaptionEntry = { id: 1, source: "meeting", at: 2_000, lang: "es", original: "dos", translation: "", status: "translating" };

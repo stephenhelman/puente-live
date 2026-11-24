@@ -32,8 +32,21 @@ export const DEFAULT_SEGMENTER_OPTIONS: SegmenterOptions = {
 const FILLERS = new Set(["um", "umm", "uh", "uhh", "er", "erm", "ah", "eh", "hmm", "mm", "mmm", "hm", "este", "pues", "eh,", "o sea"]);
 const TERMINAL = /[.?!…]["')»\]]*$/;
 
+/**
+ * Which rule ended a phrase (debug / tuning):
+ *  final    the vendor flagged speech_final (its endpointing fired)
+ *  pause    a word gap >= pauseMs (found when the next word arrived)
+ *  quiet    nothing new was heard for quietMs
+ *  maxWords / maxAge  the buffer got too long (acted on at the next final)
+ *  hold     a short fragment was held and nothing joined it within holdMs
+ *  flush    end of turn, a dropped socket, or stop
+ */
+export type CutReason = "final" | "pause" | "quiet" | "maxWords" | "maxAge" | "hold" | "flush";
+
 /** What the segmenter knows about an emitted phrase beyond its text. */
 export interface PhraseInfo {
+  /** The rule that ended the phrase. */
+  cut: CutReason;
   /** The vendor's words for this phrase (empty if the text arrived without word detail). */
   words: SttWord[];
   /** Vendor clock (seconds since its stream began) at the start of the first word: when the phrase began being SPOKEN. */
@@ -100,8 +113,11 @@ export class PhraseSegmenter {
     if (!r.isFinal) return;
     // speech_final can arrive on an empty final after the text already came in earlier finals.
     if (!this.buf) return;
-    const tooLong = wordsOf(this.buf).length >= this.opts.maxWords || this.now() - this.firstAt >= this.opts.maxAgeMs;
-    if (r.speechFinal || tooLong) this.tryEmit();
+    const manyWords = wordsOf(this.buf).length >= this.opts.maxWords;
+    const old = this.now() - this.firstAt >= this.opts.maxAgeMs;
+    if (r.speechFinal) this.tryEmit("final");
+    else if (manyWords) this.tryEmit("maxWords");
+    else if (old) this.tryEmit("maxAge");
   }
 
   /**
@@ -110,14 +126,14 @@ export class PhraseSegmenter {
    */
   private tick() {
     const t = this.now();
-    if (this.holdTimer !== null && t - this.holdAt >= this.opts.holdMs) this.emit();
-    else if (this.buf && this.lastTextWasFinal && this.holdTimer === null && t - this.heardAt >= this.opts.quietMs) this.tryEmit();
+    if (this.holdTimer !== null && t - this.holdAt >= this.opts.holdMs) this.emit("hold");
+    else if (this.buf && this.lastTextWasFinal && this.holdTimer === null && t - this.heardAt >= this.opts.quietMs) this.tryEmit("quiet");
   }
 
   /** Word by word, ending the current phrase wherever the timestamps show a real pause. */
   private appendWords(words: SttWord[]) {
     for (const w of words) {
-      if (this.buf && this.lastEnd >= 0 && (w.start - this.lastEnd) * 1000 >= this.opts.pauseMs) this.tryEmit();
+      if (this.buf && this.lastEnd >= 0 && (w.start - this.lastEnd) * 1000 >= this.opts.pauseMs) this.tryEmit("pause");
       this.append(w.word);
       this.bufWords.push(w);
       this.lastEnd = w.end;
@@ -133,7 +149,7 @@ export class PhraseSegmenter {
   flush() {
     this.clearHold();
     this.clearQuiet();
-    this.emit();
+    this.emit("flush");
   }
 
   dispose() {
@@ -150,17 +166,17 @@ export class PhraseSegmenter {
     this.clearHold();
   }
 
-  private tryEmit() {
+  private tryEmit(cut: CutReason) {
     if (isHoldable(this.buf)) {
       this.clearHold();
       this.holdAt = this.now();
-      this.holdTimer = this.timers.setTimeout(() => this.emit(), this.opts.holdMs);
+      this.holdTimer = this.timers.setTimeout(() => this.emit("hold"), this.opts.holdMs);
       return;
     }
-    this.emit();
+    this.emit(cut);
   }
 
-  private emit() {
+  private emit(cut: CutReason) {
     this.clearHold();
     const text = this.buf.trim();
     const words = this.bufWords;
@@ -169,7 +185,7 @@ export class PhraseSegmenter {
     this.buf = "";
     this.bufWords = [];
     this.lastEnd = -1; // also what makes a vendor-clock restart (reconnect) safe: flush() first, then new words
-    if (text && !this.disposed) this.onPhrase(text, { words, startSec, endSec });
+    if (text && !this.disposed) this.onPhrase(text, { cut, words, startSec, endSec });
   }
 
   private armQuiet() {
@@ -177,7 +193,7 @@ export class PhraseSegmenter {
     this.quietTimer = this.timers.setTimeout(() => {
       this.quietTimer = null;
       // Only when the last thing we heard was final: otherwise words are still waiting to be finalized.
-      if (this.buf && this.lastTextWasFinal) this.tryEmit();
+      if (this.buf && this.lastTextWasFinal) this.tryEmit("quiet");
     }, this.opts.quietMs);
   }
 

@@ -1,4 +1,5 @@
 import type { ContextPair, GlossaryProfile, Lang, SourceLang } from "@/engine";
+import type { StreamResult } from "@/features/converse/streamTranslate";
 import type { CaptionEntry, SourceId } from "./transcript";
 
 export interface PhraseInput {
@@ -21,7 +22,7 @@ export interface TranslateCall {
   context: ContextPair[];
   /** Growing text while it streams. */
   onText: (soFar: string) => void;
-  onResult: (r: { leaks?: string[]; retried?: boolean; stopReason?: string }) => void;
+  onResult: (r: StreamResult) => void;
   /** What language the model says the phrase was spoken in (may be called twice; the last call wins). */
   onSource: (lang: SourceLang) => void;
   signal: AbortSignal;
@@ -48,7 +49,7 @@ export type PipelineEvent =
 
 export interface PipelineOptions {
   translate: TranslateFn;
-  /** Earlier phrases of the same source and direction sent as reference context. */
+  /** Earlier phrases of the same source and direction sent as reference context (0-6; see setContextPhrases). */
   contextPhrases?: number;
   /** A translation request with no progress for this long is abandoned and retried. */
   stallMs?: number;
@@ -69,18 +70,26 @@ export class CaptionPipeline {
   private readonly inflight = new Set<Promise<void>>();
   private readonly profiles = new Map<number, GlossaryProfile>();
   private generation = 0;
+  private contextPhrases: number;
 
   constructor(
     private readonly opts: PipelineOptions,
     private readonly hooks: PipelineHooks,
-  ) {}
+  ) {
+    this.contextPhrases = opts.contextPhrases ?? 6;
+  }
+
+  /** How many earlier phrases the next requests carry as context. 0 = none. Takes effect for requests started after the call. */
+  setContextPhrases(n: number) {
+    this.contextPhrases = Math.max(0, Math.floor(n));
+  }
 
   get entries(): CaptionEntry[] {
     return this.list;
   }
 
   /** Adds the phrase's slot and starts translating it. Returns the slot id. */
-  add(p: PhraseInput, firstText?: () => void, finished?: () => void): number {
+  add(p: PhraseInput, firstText?: () => void, finished?: (r?: StreamResult) => void): number {
     const id = this.nextId++;
     const entry: CaptionEntry = {
       id,
@@ -133,14 +142,15 @@ export class CaptionPipeline {
   private contextFor(id: number): ContextPair[] {
     const idx = this.list.findIndex((e) => e.id === id);
     const entry = this.list[idx]!;
+    if (this.contextPhrases <= 0) return []; // slice(-0) would return everything
     return this.list
       .slice(0, idx)
       .filter((e) => e.source === entry.source && e.lang === entry.lang)
-      .slice(-(this.opts.contextPhrases ?? 6))
+      .slice(-this.contextPhrases)
       .map((e) => ({ source: e.original, translation: e.status === "done" && !e.note && e.translation ? e.translation : undefined }));
   }
 
-  private async run(id: number, firstText?: () => void, finished?: () => void) {
+  private async run(id: number, firstText?: () => void, finished?: (r?: StreamResult) => void) {
     const gen = this.generation;
     const entry = this.list.find((e) => e.id === id);
     if (!entry) return;
@@ -148,6 +158,7 @@ export class CaptionPipeline {
     // The model decides the direction. The recognizer's tag (`entry.lang` until the model answers) is only a hint.
     const hint = entry.lang;
     let sawFirst = false;
+    let result: StreamResult | undefined; // the server's final details for the attempt that succeeded (token usage, retried)
     // Attempt 0, then ONE retry: for an error, a stall, or an empty answer alike.
     for (let attempt = 0; attempt < 2; attempt++) {
       const ctrl = new AbortController();
@@ -181,6 +192,7 @@ export class CaptionPipeline {
           },
           onResult: (r) => {
             if (r.leaks?.length) this.hooks.onEvent?.({ kind: "leak", id, leaks: r.leaks });
+            result = r;
           },
           onSource: (lang) => {
             if (gen !== this.generation) return;
@@ -193,7 +205,7 @@ export class CaptionPipeline {
           if (sameText(text, entry.original)) this.hooks.onEvent?.({ kind: "unchanged", id });
           this.patch(id, { translation: text, status: "done" });
           this.hooks.onEvent?.({ kind: "done", id });
-          finished?.();
+          finished?.(result);
           return;
         }
         if (attempt === 0) {

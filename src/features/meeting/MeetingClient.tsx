@@ -6,6 +6,7 @@ import Disclaimer from "@/features/converse/Disclaimer";
 import { useAcknowledged, writeAck } from "@/features/converse/ack";
 import { useWakeLock } from "@/features/converse/useWakeLock";
 import { E, M, MEETING_ENDED, type Bi } from "./strings";
+import DebugPanel from "./DebugPanel";
 import { downloadFile, stamp, toMarkdown, toText, type CaptionEntry, type SourceId } from "./transcript";
 import { useMeeting, type Meeting, type SourceState } from "./useMeeting";
 import styles from "./meeting.module.css";
@@ -113,6 +114,7 @@ function MeetingScreen() {
       )}
 
       <Feed m={m} presenting={presenting} showSetup={!live && m.entries.length === 0 && !busy} />
+      {debug && !presenting && <DebugPanel m={m} />}
 
       {presenting ? (
         <button type="button" className={styles.exitPresent} onClick={() => setPresenting(false)}><B t={M.exitPresent} /></button>
@@ -127,7 +129,6 @@ function MeetingScreen() {
           </button>
           {m.unsaved && <span className={styles.unsaved}><B t={M.unsaved} /></span>}
           <p className={styles.disclaimer}><B t={M.disclaimer} /></p>
-          {debug && <LatencyLine m={m} />}
         </footer>
       )}
     </main>
@@ -279,28 +280,5 @@ function Entry({ e, presenting, onRetry }: { e: CaptionEntry; presenting: boolea
         </p>
       )}
     </article>
-  );
-}
-
-function LatencyLine({ m }: { m: Meeting }) {
-  const f = (v: number | null) => (v === null ? "-" : `${(v / 1000).toFixed(2)}s`);
-  const s = m.stats;
-  const d = m.debugInfo;
-  return (
-    <p className={styles.debug}>
-      n={s.n} · phrase p50/p95/max {f(s.phraseP50)}/{f(s.phraseP95)}/{f(s.phraseMax)} · first text {f(s.firstP50)}/{f(s.firstP95)}/{f(s.firstMax)} · done {f(s.doneP50)}/{f(s.doneP95)}/{f(s.doneMax)}
-      <br />
-      max delay speech end → caption {f(s.firstMax)} (phrase {f(s.phraseMax)}) · throttled {d.throttleEvents}× (worst tick gap {f(d.maxTickGapMs)}, hidden {f(d.hiddenMs)}) · audio gap max {d.maxChunkGapMs.toFixed(0)}ms · vendor gap max {f(d.maxResultGapMs)}
-      <br />
-      leaks stripped {d.leaks} · retries {d.retries} · already-hint (debug) {d.alreadyInTarget} · unchanged {d.unchanged} · untranslated {d.untranslated} · phantom dropped {d.filtered}
-      {d.log.length > 0 && (
-        <>
-          <br />
-          {d.log.slice(-6).map((l, i) => (
-            <span key={i}>{l}<br /></span>
-          ))}
-        </>
-      )}
-    </p>
   );
 }
