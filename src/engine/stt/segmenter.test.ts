@@ -136,3 +136,32 @@ describe("forced cuts (a final that came from our own Finalize)", () => {
     expect(out).toEqual(["forced", "final"]);
   });
 });
+
+describe("discard (pause / clear)", () => {
+  it("throws away buffered and held words without emitting them, and the segmenter keeps working", () => {
+    const out: string[] = [];
+    const s = new PhraseSegmenter((t) => out.push(t), DEFAULT_SEGMENTER_OPTIONS, () => 0, frozen);
+    s.push(result("we should start the meeting now", 0)); // buffered, not yet a phrase
+    expect(s.pending).toBe("we should start the meeting now");
+    s.discard();
+    expect(s.pending).toBe("");
+    s.flush(); // nothing left to emit
+    expect(out).toEqual([]);
+    s.push(result("thank you all for joining today", 5, true, true)); // new speech is a normal phrase
+    expect(out).toEqual(["thank you all for joining today"]);
+  });
+
+  it("also drops a held short fragment, and forgets the word-gap state so the next words are not compared with discarded ones", () => {
+    let clock = 0;
+    const out: string[] = [];
+    const s = new PhraseSegmenter((t) => out.push(t), DEFAULT_SEGMENTER_OPTIONS, () => clock, frozen);
+    s.push(result("okay", 0, true, true)); // held
+    s.discard();
+    clock += 10_000;
+    s.push(result("", 0));
+    expect(out).toEqual([]);
+    s.push(result("let us begin with the first topic", 100, true, true)); // vendor time far from the discarded words
+    expect(out).toEqual(["let us begin with the first topic"]);
+  });
+});
+

@@ -1,0 +1,148 @@
+/* The page is transparent: OBS composites it over the slides. Applied to the whole document (and the OBS default CSS agrees). */
+:global(html),
+:global(body) {
+  background: transparent !important;
+  margin: 0;
+  overflow: hidden;
+}
+
+.root {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  color: #fff;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  /* --size and --lines are set inline from ?size= and ?lines= (the full-screen layout sets larger ones) */
+  --lh: 1.2;
+  --origsize: calc(var(--size) * 0.5);
+  --origh: calc(var(--origsize) * 1.45);
+  --gap: calc(var(--size) * 0.18);
+  --pad: 0px;
+  pointer-events: none;
+}
+.root[data-bg="dark"] { --pad: calc(var(--size) * 0.3); }
+
+/* The strip: ONE fixed height, whatever is (or is not) being said. Nothing inside it can change its size. */
+.strip {
+  position: absolute;
+  left: 4vw;
+  right: 4vw;
+  box-sizing: border-box;
+  height: calc(var(--origh) + var(--gap) + var(--lines) * var(--size) * var(--lh) + 2 * var(--pad));
+  padding: var(--pad) calc(var(--pad) * 1.6);
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: var(--gap);
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+.strip.on { opacity: 1; }
+.root[data-bg="dark"] .strip { background: rgba(0, 0, 0, 0.84); border-radius: calc(var(--size) * 0.3); }
+
+.root[data-align="bottom"] .strip { bottom: 4vh; }
+.root[data-align="top"] .strip { top: 4vh; }
+.root[data-align="center"] .strip { top: 50%; transform: translateY(-50%); }
+
+/* Large, full-screen layout for the scenes listed in ?full= (the same page instance; only these rules change). */
+.root[data-layout="full"] .strip {
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  height: auto;
+  transform: none;
+  justify-content: center;
+  padding: 5vh 6vw;
+  border-radius: 0;
+}
+.root[data-layout="full"][data-bg="dark"] .strip { background: #000; }
+
+/* The small original line: one line, never wraps. */
+.orig {
+  margin: 0;
+  height: var(--origh);
+  font-size: var(--origsize);
+  line-height: var(--origh);
+  color: #d6dde5;
+  white-space: nowrap;
+  overflow: hidden;
+  font-weight: 500;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.95), 0 0 2px rgba(0, 0, 0, 0.9);
+}
+
+/* The translation: exactly --lines lines tall, anchored to the bottom, so new text pushes older text out of the top. */
+.trans {
+  height: calc(var(--lines) * var(--size) * var(--lh));
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+.trans p {
+  margin: 0;
+  font-size: var(--size);
+  line-height: var(--lh);
+  font-weight: 700;
+  overflow-wrap: anywhere;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.95), 0 0 3px rgba(0, 0, 0, 0.9);
+}
+
+.tag {
+  display: inline-block;
+  font-size: 0.4em;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  padding: 0.12em 0.5em;
+  margin-right: 0.55em;
+  border-radius: 0.3em;
+  background: rgba(255, 255, 255, 0.24);
+  color: #fff;
+  vertical-align: 0.35em;
+  text-shadow: none;
+}
+.orig .tag { font-size: 0.7em; vertical-align: 0.1em; }
+
+/* --- operator controls: never inside the strip --------------------------------------------------------------------- */
+.bar {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  max-width: min(560px, 92vw);
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(13, 17, 23, 0.94);
+  border: 1px solid #30363d;
+  color: #e6edf3;
+  font: 13px/1.35 system-ui, sans-serif;
+  pointer-events: auto;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.15s;
+}
+.bar.on { opacity: 1; visibility: visible; }
+.row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.dot { width: 12px; height: 12px; border-radius: 50%; flex: none; }
+.dot[data-c="green"] { background: #3fb950; }
+.dot[data-c="amber"] { background: #d29922; }
+.dot[data-c="red"] { background: #f85149; }
+.light { font-weight: 700; }
+.device { color: #8b949e; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.meter { position: relative; width: 150px; height: 8px; background: #21262d; border-radius: 4px; overflow: hidden; flex: none; }
+.meter i { position: absolute; inset: 0 auto 0 0; background: linear-gradient(90deg, #3fb950, #d29922 75%, #f85149); width: 0; }
+.btn {
+  font: inherit;
+  color: #e6edf3;
+  background: #21262d;
+  border: 1px solid #484f58;
+  border-radius: 8px;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+.btn:disabled { opacity: 0.4; cursor: default; }
+.btn:hover:not(:disabled) { border-color: #8b949e; }
+.hint { color: #8b949e; font-size: 12px; }
+.list { display: grid; gap: 4px; }
+.list .btn { text-align: left; }

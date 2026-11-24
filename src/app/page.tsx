@@ -18,6 +18,10 @@ export default async function Home() {
           <strong>Meeting / Reunión</strong>
           <span>Captions and translation for Zoom and other video calls (Chrome on a laptop). / Subtítulos y traducción para Zoom y otras videollamadas (Chrome en computadora).</span>
         </Link>
+        <Link className="mode" href="/present/setup">
+          <strong>Presentation / Presentación</strong>
+          <span>Captions for an OBS stream: builds the browser-source address and the setup checklist. / Subtítulos para una transmisión con OBS: crea la dirección y la lista de pasos.</span>
+        </Link>
         <p className="muted">AI translation. Not for clinical, legal, or consent situations. / Traducción con IA. No para situaciones clínicas, legales o de consentimiento.</p>
       </div>
     </main>

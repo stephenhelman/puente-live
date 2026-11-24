@@ -280,6 +280,47 @@ Measured over sequential single-stream runs of 50 s of run-on speech: `fin=3000`
 never fired in that audio. Real speakers pause more than synthetic speech, so forcing will fire less and cost less; test with a
 real presenter before turning it on by default.
 
+## Presentation mode (`/present`): an OBS browser source
+
+`/present` is the caption overlay for a stream. It runs INSIDE OBS as a Browser Source (not a captured Chrome window): it listens
+to an audio **input device** (a virtual cable carrying the meeting's audio) with `getUserMedia`, starts by itself, and draws only
+captions on a transparent background. `/present/setup` (normal browser) builds the OBS URL and lists the checklist.
+
+Code: `src/features/present/` (`controller.ts` has no React and owns everything: device choice, auto-start, restart, pause, clear,
+transcript, blank-after-silence; `CaptionStrip.tsx` is the only thing on air and takes ONE prop, the caption view).
+
+| Param | Meaning | Default |
+|---|---|---|
+| `device` | part of the input's label ("BlackHole", "CABLE Output"). Not found or empty: a list is shown in the control bar; the pick is remembered (localStorage of that browser) | none |
+| `size` / `lines` | translation text px (16-220) / lines of translation in the fixed-height strip (1-6) | 56 / 2 |
+| `align` | `bottom`, `top`, `center` | bottom |
+| `bg` | `transparent` or `dark` (solid strip) | transparent |
+| `clear` | seconds of silence before the captions blank (0 = never) | 6 |
+| `full` | OBS scene names (separated by `\|`) that get the large full-screen layout | none |
+| `controls` | `0` removes the control bar (P / C keys still work; the input list still appears if no input is chosen) | on |
+| `profile`, `fin`, `ep`, `max`, ... | glossary profile and the tuning parameters above | hemophilia, presenter values, `fin=0` |
+
+Presenter defaults: `ep=300 pause=350 max=14 age=4000 quiet=600 hold=1000 ctx=3`, forced Finalize off. Translation direction is
+decided by the model (auto mode) like `/meeting`. One stream, no microphone.
+
+**What is on air.** Only `CaptionStrip`: fixed height (set from `size` and `lines`, so it never reflows), small original line
+(the live interim, shown at once), large translation anchored to the bottom (older text scrolls out of the top), small EN/ES tags
+where the language changes, `lang` attributes. Errors, status, device lists and the 401 case are separate state read only by the
+control bar; a failed phrase is skipped, never drawn. A 401 does NOT navigate to the login page (that would be drawn on air): the
+light turns red and the bar offers "Sign in".
+
+**Pause** (bar or P): stops sending audio (the socket's keep-alive keeps it open), discards buffered words, aborts every translation
+in flight and removes the half-translated phrase, and drops whatever the vendor still returns for audio sent before the pause (by
+the vendor's clock, so a quick resume cannot leak it either). Nothing said while paused reaches the captions or the transcript.
+**Clear** (bar or C) wipes the screen and the buffered words; the transcript (download from the bar) is never cleared.
+
+**Per-scene layout.** `window.obsstudio.getCurrentScene` / the `obsSceneChanged` event (needs Page permissions of at least "Read
+access to user information") switch the same page instance between the strip and the full-screen layout. Put the one source in every
+scene with "Add Existing"; never duplicate it (a second source would listen twice).
+
+**Login.** Signed out, `/present?...` redirects to the login form and comes back to the same URL afterwards (`?next=`, validated
+to a path on this site) because an OBS browser source has no address bar. The session cookie lasts 12 hours.
+
 ## Glossary profiles
 
 Two bundled profiles, `chapter` (the original chapter-admin terms) and `hemophilia`. Each has its own entries, its own

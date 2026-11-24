@@ -127,6 +127,16 @@ export class CaptionPipeline {
     this.controllers.clear();
   }
 
+  /**
+   * Pause: abort every request in flight and remove the phrases that were still being translated (they were spoken before the
+   * pause but never finished, and a half-translated phrase must not appear later). Finished captions stay.
+   */
+  discardInFlight() {
+    this.abortAll();
+    this.list = this.list.filter((e) => e.status !== "translating");
+    this.hooks.onChange(this.list);
+  }
+
   clear() {
     this.abortAll();
     this.list = [];

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { hardNavigate } from "@/lib/nav";
+import { hardNavigate, safeNext } from "@/lib/nav";
 
 export default function PasscodeForm() {
   const [passcode, setPasscode] = useState("");
@@ -18,7 +18,9 @@ export default function PasscodeForm() {
       body: JSON.stringify({ passcode }),
     });
     if (res.ok) {
-      hardNavigate("/");
+      // Back to where the person was heading (e.g. /present?device=...), not always the menu: inside an OBS browser source
+      // there is no address bar to navigate with.
+      hardNavigate(safeNext(new URLSearchParams(window.location.search).get("next")));
       return;
     }
     const body = (await res.json().catch(() => ({}))) as { error?: string };

@@ -10,10 +10,13 @@ class PcmCapture extends AudioWorkletProcessor {
     this.out = [];
   }
   process(inputs) {
-    const ch = inputs[0] && inputs[0][0];
+    const inp = inputs[0];
+    const ch = inp && inp[0];
     if (!ch) return true;
+    // Stereo sources (a virtual audio cable is 2-channel) are averaged, so audio panned to one side is not lost.
+    const ch1 = inp.length > 1 ? inp[1] : null;
     for (let i = 0; i < ch.length; i++) {
-      this.acc += ch[i];
+      this.acc += ch1 ? (ch[i] + ch1[i]) / 2 : ch[i];
       this.n++;
       this.phase += 1;
       if (this.phase >= this.ratio) {

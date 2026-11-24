@@ -158,6 +158,19 @@ export class PhraseSegmenter {
     this.emit("flush");
   }
 
+  /**
+   * Throws away everything buffered WITHOUT emitting it (an operator paused or cleared: what was said so far must not
+   * reach the captions). Unlike flush(), no phrase comes out. The segmenter stays usable.
+   */
+  discard() {
+    this.clearHold();
+    this.clearQuiet();
+    this.buf = "";
+    this.bufWords = [];
+    this.lastEnd = -1;
+    this.lastTextWasFinal = true;
+  }
+
   dispose() {
     this.disposed = true;
     this.clearHold();

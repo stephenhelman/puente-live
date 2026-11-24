@@ -1,5 +1,5 @@
 import type { ContextPair, Direction, GlossaryProfile, Lang, SourceLang } from "@/engine";
-import { hardNavigate } from "@/lib/nav";
+import { authLost } from "@/lib/nav";
 
 export class NetworkError extends Error {}
 export class TranslateFailed extends Error {}
@@ -50,7 +50,7 @@ export async function streamTranslate(
     throw new NetworkError("Network error");
   }
   if (res.status === 401) {
-    hardNavigate("/");
+    authLost();
     throw new TranslateFailed("Session expired");
   }
   if (!res.ok || !res.body) throw new TranslateFailed(`HTTP ${res.status}`);

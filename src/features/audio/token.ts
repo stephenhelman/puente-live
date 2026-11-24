@@ -1,4 +1,4 @@
-import { hardNavigate } from "@/lib/nav";
+import { authLost } from "@/lib/nav";
 
 const SAFETY_MARGIN_MS = 10_000;
 
@@ -17,7 +17,7 @@ export async function getDeepgramToken({ forceRefresh }: { forceRefresh: boolean
     throw new TokenError("Network error while requesting token");
   }
   if (res.status === 401) {
-    hardNavigate("/");
+    authLost();
     throw new TokenError("Session expired");
   }
   if (!res.ok) throw new TokenError(`Token request failed (${res.status})`);

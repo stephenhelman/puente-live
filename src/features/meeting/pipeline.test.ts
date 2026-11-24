@@ -235,6 +235,52 @@ describe("translation context size (?ctx=)", () => {
   });
 });
 
+describe("discardInFlight (pause)", () => {
+  it("aborts every request in flight and removes the phrases still being translated; finished captions stay", async () => {
+    const m = manual();
+    const p = new CaptionPipeline({ translate: m.fn }, { onChange: () => {} });
+    p.add(phrase("uno"));
+    await tick();
+    m.calls[0]!.resolve("one");
+    await p.idle();
+    p.add(phrase("dos"));
+    p.add(phrase("tres"));
+    await tick();
+    m.calls[1]!.call.onText("tw"); // half translated
+    p.discardInFlight();
+    expect(m.calls[1]!.call.signal.aborted).toBe(true);
+    expect(m.calls[2]!.call.signal.aborted).toBe(true);
+    expect(p.entries.map((e) => [e.original, e.translation, e.status])).toEqual([["uno", "one", "done"]]);
+  });
+
+  it("a late answer for a discarded phrase never comes back", async () => {
+    const m = manual();
+    const events: string[] = [];
+    const p = new CaptionPipeline({ translate: m.fn }, { onChange: () => {}, onEvent: (e) => events.push(e.kind) });
+    p.add(phrase("dos"));
+    await tick();
+    p.discardInFlight();
+    m.calls[0]!.resolve("two"); // the abort already rejected it; resolving later changes nothing
+    await p.idle();
+    expect(p.entries).toEqual([]);
+    expect(events).not.toContain("done");
+    expect(events).not.toContain("retry"); // an abort is not a failure to retry
+  });
+
+  it("new phrases after the pause translate normally", async () => {
+    const m = manual();
+    const p = new CaptionPipeline({ translate: m.fn }, { onChange: () => {} });
+    p.add(phrase("dos"));
+    await tick();
+    p.discardInFlight();
+    p.add(phrase("tres"));
+    await tick();
+    m.calls[1]!.resolve("three");
+    await p.idle();
+    expect(p.entries.map((e) => [e.original, e.translation])).toEqual([["tres", "three"]]);
+  });
+});
+
 describe("transcript", () => {
   it("never prints a blank translation and orders by spoken time", () => {
     const base: CaptionEntry = { id: 1, source: "meeting", at: 2_000, lang: "es", original: "dos", translation: "", status: "translating" };

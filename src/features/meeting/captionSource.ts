@@ -12,6 +12,7 @@ import {
   type Timers,
 } from "@/engine";
 import { getDeepgramToken } from "@/features/audio/token";
+import { rmsLevel } from "@/features/audio/level";
 import { openPcmTap, STT_SAMPLE_RATE, type PcmTap } from "@/features/audio/streamPcm";
 import type { MeetingTuning } from "./tuning";
 import type { SourceId } from "./transcript";
@@ -65,6 +66,8 @@ export interface CaptionSourceOptions {
   onFiltered?: (id: SourceId, text: string, reason: string) => void;
   /** Timers that are not throttled in a background window. */
   timers?: Timers;
+  /** Input level of every audio chunk (~50 ms), 0-1 RMS. Keeps reporting while paused, so an operator still sees the signal. */
+  onLevel?: (rms: number) => void;
 }
 
 /**
@@ -89,6 +92,11 @@ export class CaptionSource {
   private maxResultGapMs = 0;
   private lastFinalizes = 0;
   private lastRestored = 0;
+  private paused = false;
+  /** Seconds of audio sent on the current socket = the vendor's clock (its word times count the audio it received). */
+  private sentSec = 0;
+  /** Words the vendor timed before this are from audio sent before a pause: drop them. 0 = no filter. */
+  private dropBeforeSec = 0;
 
   constructor(private readonly o: CaptionSourceOptions) {
     this.segmenter = new PhraseSegmenter(
@@ -136,6 +144,9 @@ export class CaptionSource {
         this.flushAll();
         this.origin = performance.now();
         this.originEpoch = Date.now();
+        // The replacement socket's clock restarts at zero: a pause point on the old clock means nothing there.
+        this.sentSec = 0;
+        this.dropBeforeSec = 0;
       },
       onStatus: (s, info) => {
         if (!this.stopped) this.o.onStatus(this.o.id, s, info?.reason);
@@ -148,6 +159,9 @@ export class CaptionSource {
       const now = performance.now();
       this.maxChunkGapMs = Math.max(this.maxChunkGapMs, now - this.lastChunkAt);
       this.lastChunkAt = now;
+      this.o.onLevel?.(rmsLevel(pcm));
+      if (this.paused) return; // nothing is sent while paused; the provider's keep-alive holds the socket open
+      this.sentSec += pcm.byteLength / 2 / STT_SAMPLE_RATE;
       this.session?.sendAudio(pcm);
     };
     this.o.onStatus(this.o.id, "live");
@@ -163,12 +177,49 @@ export class CaptionSource {
     };
   }
 
-  private onResult(r: SttResult) {
-    this.maxResultGapMs = Math.max(this.maxResultGapMs, r.receivedAt - this.lastResultAt);
-    this.lastResultAt = r.receivedAt;
+  /**
+   * Pause: stop sending audio, throw away what is buffered (finalized-but-unemitted words and the interim), and ignore
+   * everything the vendor still returns for audio sent before the pause. Nothing said while paused can reach the captions.
+   */
+  setPaused(paused: boolean) {
+    if (this.stopped || paused === this.paused) return;
+    this.paused = paused;
+    if (paused) {
+      this.discard();
+      this.dropBeforeSec = this.sentSec; // on resume, words timed before this are stale
+    }
+  }
+
+  get isPaused(): boolean {
+    return this.paused;
+  }
+
+  /** Forget the words heard so far without emitting them (an operator cleared the screen, or paused). */
+  discard() {
+    this.segmenter.discard();
+    this.interim = "";
+    this.o.onTail(this.o.id, "");
+  }
+
+  private onResult(raw: SttResult) {
+    this.maxResultGapMs = Math.max(this.maxResultGapMs, raw.receivedAt - this.lastResultAt);
+    this.lastResultAt = raw.receivedAt;
+    if (this.paused) return; // late results for audio sent before the pause
+    const r = this.dropStale(raw);
     this.interim = r.isFinal ? "" : r.text;
     this.segmenter.push(r);
     this.o.onTail(this.o.id, [this.segmenter.pending, this.interim].filter(Boolean).join(" "));
+  }
+
+  /**
+   * After a resume, results can still carry words from the audio sent before the pause. Their vendor time is before
+   * `dropBeforeSec`, so they are removed (the result keeps its flags, so the segmenter's deadlines still advance).
+   */
+  private dropStale(r: SttResult): SttResult {
+    if (this.dropBeforeSec <= 0 || r.words.length === 0) return r;
+    const keep = r.words.filter((w) => w.start >= this.dropBeforeSec - 0.02);
+    if (keep.length === r.words.length) return r;
+    return { ...r, words: keep, text: keep.map((w) => w.word).join(" ") };
   }
 
   /** Words Deepgram never finalized still count; then everything becomes phrases. */
