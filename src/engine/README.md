@@ -216,6 +216,7 @@ Works on `/meeting` and `/converse`.
 | `age` | max age of a phrase (cut at the next vendor final) | 1000-30000 ms | 8000 |
 | `quiet` | nothing new heard for this long ends a phrase | 200-3000 ms | 900 |
 | `hold` | how long a one/two-word fragment waits to be joined | 200-5000 ms | 2500 |
+| `fin` | forced Finalize: longest interim text may go without a final (0 = off) | 1000-15000 ms, or 0 | 0 (off) |
 | `ctx` | earlier phrases sent to the translator | 0-6 | 6 |
 | `mins` | session length cap (`/meeting` only) | 1-600 min | 180 |
 | `profile` | glossary profile | chapter, hemophilia | page default |
@@ -229,6 +230,40 @@ numbers and the tuning as plain text (never any transcript text).
 Finding from the first runs (50 s of presenter-style speech, synthetic voice): `max` and `age` only act when Deepgram delivers a
 final result, and in continuous speech Deepgram can hold its first final for ~13 s. The first phrase (spoken at 0-4.5 s) was
 emitted at 13.4 s with defaults and with `max=14&age=4000`. Tuning the segmenter alone cannot fix that; see the panel's `cut` column.
+
+## Forced Finalize (`?fin=`)
+
+Deepgram only finalizes at pauses or on its own schedule, and in continuous speech it can hold the first final for ~13 s. The
+segmenter cuts only on finals, so `max` and `age` cannot act until one arrives. `ForcedFinalizer` (`stt/finalizer.ts`, owned by
+`startContinuousStt` so every caller gets it) watches the results: when interim text has been pending `fin` ms without a final it
+sends the vendor's `Finalize` message, and a final arrives at a moment we choose.
+
+- The clock starts at the first interim text after a final and **resets on every final** (natural or forced).
+- At the limit it looks at the newest interim: if its last word is the same word the previous interim had in that position (it has
+  settled), it finalizes at once; otherwise it waits up to 500 ms more for that, then finalizes anyway.
+- At most one Finalize per interval; a new interim starts the next one.
+- Timers are the injected (Worker) timers, and the deadlines are also enforced from the clock on each vendor result, so a
+  background window does not delay them.
+- The resulting text goes through the segmenter's rules unchanged. A cut made at a final that came from our Finalize
+  (`from_finalize`) is reported as cut `forced` in the debug panel, even though the vendor also flags those results
+  `speech_final` (measured). A natural endpoint still says `final`. A forced final that no rule cuts is buffered like any other.
+- **Off by default** (`fin=0`) on `/meeting` and `/converse`. The debug panel shows how many Finalize messages were sent.
+
+The Deepgram keep-alive now runs on the same injected timers (it used plain `setInterval`, which a hidden window throttles to
+once a minute, enough to let an idle socket close).
+
+### Forced Finalize measurements (50 s synthetic run-on speech, hemophilia profile, local server, two rounds)
+
+| p50 / p95 | defaults | presenter values (`max=14&age=4000&ep=300&pause=350&quiet=600&hold=1000&ctx=3`) | presenter + `fin=3000` |
+|---|---|---|---|
+| speech end to emitted | 1.70 / 8.87 s, 1.02 / 2.82 s | 1.28 / 8.86 s, 1.31 / 8.85 s | 0.31 / 4.20 s, 0.28 / 2.91 s |
+| speech end to first text | 2.86 / 9.74 s, 1.98 / 3.87 s | 2.30 / 9.77 s, 2.29 / 9.80 s | 1.18 / 4.84 s, 1.15 / 3.68 s |
+| word error rate vs script | 4.4 %, 9.4 % | 4.4 %, 4.4 % | 10.6 %, 5.0 % |
+
+(each cell: round 1, round 2). The first final from the vendor arrives ~5 s in, not 13 s, but without `fin` it still only
+finalizes at its own pace; with `fin=3000` every phrase is emitted within ~0.3 s of its last word. Vendor accuracy itself varies
+between identical runs (defaults: 4.4 % and 9.4 %), so single runs cannot show a small forced-cut cost. Forced cuts did drop single words at
+a boundary in both rounds ("hemophilia" in "your | treatment center"), never duplicated one, and end phrases mid-clause.
 
 ## Glossary profiles
 

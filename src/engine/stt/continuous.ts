@@ -1,3 +1,4 @@
+import { ForcedFinalizer } from "./finalizer";
 import { GLOBAL_TIMERS, type Timers } from "./timers";
 import type { SttProvider, SttResult, SttSession } from "./types";
 
@@ -14,6 +15,11 @@ export interface ContinuousSttOptions {
    * a Worker-backed implementation is not throttled. Defaults to the globals.
    */
   timers?: Timers;
+  /**
+   * Send the vendor's Finalize when interim text has been pending this long without a final (see ForcedFinalizer), ms.
+   * 0 / unset = off.
+   */
+  forceFinalizeMs?: number;
   /** Vendor keep-alive cadence while no audio is flowing. Default 4000. */
   keepAliveMs?: number;
   /** Audio kept while the socket is down and replayed once it is back, ms. Default 20000. */
@@ -35,6 +41,8 @@ export interface ContinuousSttOptions {
 export interface ContinuousSttSession {
   readonly status: ContinuousStatus;
   readonly reconnects: number;
+  /** How many forced Finalize messages were sent (0 when forceFinalizeMs is off). */
+  readonly finalizesSent: number;
   /** 16-bit LE mono PCM. Buffered (bounded) while reconnecting. */
   sendAudio(pcm: ArrayBuffer): void;
   close(): void;
@@ -61,6 +69,8 @@ export async function startContinuousStt(provider: SttProvider, opts: Continuous
   let pending: ArrayBuffer[] = [];
   let pendingBytes = 0;
   let wake: (() => void) | null = null;
+  const timers = opts.timers ?? GLOBAL_TIMERS;
+  const finalizer = new ForcedFinalizer({ limitMs: opts.forceFinalizeMs ?? 0, finalize: () => session?.finalize(), timers });
   let lastResultAt = Date.now();
   let lastAudioAt = 0;
 
@@ -78,9 +88,11 @@ export async function startContinuousStt(provider: SttProvider, opts: Continuous
       languageHints: opts.languageHints,
       keyterms: opts.keyterms,
       keepAliveMs: opts.keepAliveMs ?? 4000,
+      timers,
       onResult: (r) => {
         if (gen !== generation || closed) return;
         lastResultAt = Date.now();
+        finalizer.push(r);
         opts.onResult(r);
       },
       onError: () => {
@@ -93,7 +105,6 @@ export async function startContinuousStt(provider: SttProvider, opts: Continuous
     });
   };
 
-  const timers = opts.timers ?? GLOBAL_TIMERS;
   const sleep = (ms: number) =>
     new Promise<void>((resolve) => {
       const t = timers.setTimeout(resolve, ms);
@@ -108,6 +119,7 @@ export async function startContinuousStt(provider: SttProvider, opts: Continuous
     if (reconnecting || closed) return;
     reconnecting = true;
     session = null;
+    finalizer.reset();
     setStatus("reconnecting", { attempt: 0, reason });
     opts.onDrop();
     const downSince = Date.now();
@@ -165,6 +177,9 @@ export async function startContinuousStt(provider: SttProvider, opts: Continuous
     get reconnects() {
       return reconnects;
     },
+    get finalizesSent() {
+      return finalizer.finalizesSent;
+    },
     sendAudio(pcm) {
       if (closed) return;
       lastAudioAt = Date.now();
@@ -179,6 +194,7 @@ export async function startContinuousStt(provider: SttProvider, opts: Continuous
     close() {
       if (closed) return;
       closed = true;
+      finalizer.dispose();
       timers.clearInterval(watchdog);
       generation++;
       wake?.();

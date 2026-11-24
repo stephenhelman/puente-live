@@ -1,3 +1,4 @@
+import { GLOBAL_TIMERS } from "./timers";
 import type { SttProvider, SttResult, SttSession, SttStartOptions, SttWord } from "./types";
 
 const DEEPGRAM_LISTEN_URL = "wss://api.deepgram.com/v1/listen";
@@ -132,14 +133,15 @@ export class DeepgramSttProvider implements SttProvider {
 
     // Deepgram closes a socket that receives neither audio nor a KeepAlive message for ~10 s.
     let lastSendAt = performance.now();
-    let keepAliveTimer: ReturnType<typeof setInterval> | null = null;
+    const timers = opts.timers ?? GLOBAL_TIMERS;
+    let keepAliveTimer: number | null = null;
     const stopKeepAlive = () => {
-      if (keepAliveTimer) clearInterval(keepAliveTimer);
+      if (keepAliveTimer !== null) timers.clearInterval(keepAliveTimer);
       keepAliveTimer = null;
     };
     if (opts.keepAliveMs && opts.keepAliveMs > 0) {
       const every = opts.keepAliveMs;
-      keepAliveTimer = setInterval(() => {
+      keepAliveTimer = timers.setInterval(() => {
         if (ws.readyState !== WebSocket.OPEN) return;
         if (performance.now() - lastSendAt >= every) {
           ws.send(JSON.stringify({ type: "KeepAlive" }));

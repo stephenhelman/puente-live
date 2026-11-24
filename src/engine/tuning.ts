@@ -7,6 +7,12 @@ export interface Tuning {
   segmenter: SegmenterOptions;
   /** How many earlier phrases are sent as translation context. */
   contextPhrases: number;
+  /**
+   * Send the vendor's Finalize when interim text has gone this long without a final, ms (see ForcedFinalizer). 0 = off.
+   * Off by default everywhere: the vendor can hold its finals ~13 s in continuous speech, which only matters to long-run
+   * speakers (presenters).
+   */
+  finalizeMs: number;
   /** Keep capturing this long after the stop tap: the last syllable is still in the audio pipeline, ms. */
   stopTailMs: number;
 }
@@ -16,6 +22,7 @@ export const DEFAULT_TUNING: Tuning = {
   endpointingMs: 400,
   segmenter: DEFAULT_SEGMENTER_OPTIONS satisfies SegmenterOptions,
   contextPhrases: 6,
+  finalizeMs: 0,
   stopTailMs: 300,
 };
 
@@ -27,6 +34,8 @@ export interface TuningParam {
   unit: "ms" | "words" | "phrases";
   min: number;
   max: number;
+  /** 0 (or less) means "off" and is kept as 0 instead of being clamped up to `min`. */
+  zeroIsOff?: boolean;
   get(t: Tuning): number;
   set(t: Tuning, v: number): Tuning;
 }
@@ -41,12 +50,14 @@ export const TUNING_PARAMS: readonly TuningParam[] = [
   { param: "age", label: "max phrase age", unit: "ms", min: 1000, max: 30_000, get: (t) => t.segmenter.maxAgeMs, set: (t, v) => seg(t, { maxAgeMs: v }) },
   { param: "quiet", label: "quiet timeout", unit: "ms", min: 200, max: 3000, get: (t) => t.segmenter.quietMs, set: (t, v) => seg(t, { quietMs: v }) },
   { param: "hold", label: "hold (short fragments)", unit: "ms", min: 200, max: 5000, get: (t) => t.segmenter.holdMs, set: (t, v) => seg(t, { holdMs: v }) },
+  { param: "fin", label: "forced Finalize after", unit: "ms", min: 1000, max: 15_000, zeroIsOff: true, get: (t) => t.finalizeMs, set: (t, v) => ({ ...t, finalizeMs: v }) },
   { param: "ctx", label: "translation context", unit: "phrases", min: 0, max: 6, get: (t) => t.contextPhrases, set: (t, v) => ({ ...t, contextPhrases: v }) },
 ];
 
 /**
  * Applies the URL parameters above to `base` (a page's own defaults). Returns a new object; `base` is untouched. A missing,
  * empty or non-numeric value leaves the default; a number outside the range is clamped; every value is a whole number.
+ * `fin` is the one parameter where 0 (or below) is meaningful: it switches the feature off.
  */
 export function applyTuningParams(base: Tuning, query: URLSearchParams | string): Tuning {
   const q = typeof query === "string" ? new URLSearchParams(query) : query;
@@ -56,7 +67,8 @@ export function applyTuningParams(base: Tuning, query: URLSearchParams | string)
     if (raw === null || raw.trim() === "") continue;
     const n = Number(raw);
     if (!Number.isFinite(n)) continue;
-    t = p.set(t, Math.min(p.max, Math.max(p.min, Math.round(n))));
+    const whole = Math.round(n);
+    t = p.set(t, p.zeroIsOff && whole <= 0 ? 0 : Math.min(p.max, Math.max(p.min, whole)));
   }
   return t;
 }

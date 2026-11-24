@@ -34,6 +34,8 @@ const TERMINAL = /[.?!…]["')»\]]*$/;
 
 /**
  * Which rule ended a phrase (debug / tuning):
+ *  forced   a cut at a final we asked for with Finalize (the vendor was withholding finals; see ForcedFinalizer). The vendor
+ *           marks those results speech_final too, so this label wins over "final" when from_finalize is set
  *  final    the vendor flagged speech_final (its endpointing fired)
  *  pause    a word gap >= pauseMs (found when the next word arrived)
  *  quiet    nothing new was heard for quietMs
@@ -41,7 +43,7 @@ const TERMINAL = /[.?!…]["')»\]]*$/;
  *  hold     a short fragment was held and nothing joined it within holdMs
  *  flush    end of turn, a dropped socket, or stop
  */
-export type CutReason = "final" | "pause" | "quiet" | "maxWords" | "maxAge" | "hold" | "flush";
+export type CutReason = "forced" | "final" | "pause" | "quiet" | "maxWords" | "maxAge" | "hold" | "flush";
 
 /** What the segmenter knows about an emitted phrase beyond its text. */
 export interface PhraseInfo {
@@ -115,9 +117,13 @@ export class PhraseSegmenter {
     if (!this.buf) return;
     const manyWords = wordsOf(this.buf).length >= this.opts.maxWords;
     const old = this.now() - this.firstAt >= this.opts.maxAgeMs;
-    if (r.speechFinal) this.tryEmit("final");
-    else if (manyWords) this.tryEmit("maxWords");
-    else if (old) this.tryEmit("maxAge");
+    // A final that came from our own Finalize is "forced": without it the vendor would still be holding this text. The
+    // vendor flags those results speech_final as well (measured: every Finalize result had both flags), so from_finalize
+    // takes precedence in the label. The decision to cut is unchanged.
+    const forced = r.fromFinalize;
+    if (r.speechFinal) this.tryEmit(forced ? "forced" : "final");
+    else if (manyWords) this.tryEmit(forced ? "forced" : "maxWords");
+    else if (old) this.tryEmit(forced ? "forced" : "maxAge");
   }
 
   /**

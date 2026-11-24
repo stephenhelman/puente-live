@@ -98,3 +98,41 @@ describe("which rule ended each phrase (cut)", () => {
     expect(stock.out).toEqual([]);
   });
 });
+
+describe("forced cuts (a final that came from our own Finalize)", () => {
+  const forcedFinal = (text: string, startAt: number): SttResult => ({ ...result(text, startAt, true, false), fromFinalize: true });
+
+  it("a maxWords cut at a Finalize-induced final is reported as forced", () => {
+    const out: [string, string][] = [];
+    const s = new PhraseSegmenter((t, i) => out.push([t, i.cut]), { ...DEFAULT_SEGMENTER_OPTIONS, maxWords: 6 }, () => 0, frozen);
+    s.push(forcedFinal("one two three four five six seven", 0));
+    expect(out).toEqual([["one two three four five six seven", "forced"]]);
+  });
+
+  it("a maxAge cut at a Finalize-induced final is forced too", () => {
+    let clock = 1_000_000;
+    const out: string[] = [];
+    const s = new PhraseSegmenter((_t, i) => out.push(i.cut), { ...DEFAULT_SEGMENTER_OPTIONS, maxAgeMs: 4000, quietMs: 60_000 }, () => clock, frozen);
+    s.push(result("we should start the", 0));
+    clock += 4500;
+    s.push(forcedFinal("meeting now with everyone", 1.6));
+    expect(out).toEqual(["forced"]);
+  });
+
+  it("the existing rules are unchanged: a forced final under the limits is simply buffered, then cut by a normal rule", () => {
+    const out: [string, string][] = [];
+    const s = new PhraseSegmenter((t, i) => out.push([t, i.cut]), DEFAULT_SEGMENTER_OPTIONS, () => 0, frozen);
+    s.push(forcedFinal("we are going to talk about it", 0)); // 7 words: under maxWords, young, no speech_final
+    expect(out).toEqual([]);
+    s.push(result("and that is all", 2.8, true, true)); // contiguous speech, then a natural final
+    expect(out).toEqual([["we are going to talk about it and that is all", "final"]]);
+  });
+
+  it("the vendor flags a Finalize result speech_final too; it is still labelled forced (a natural final stays final)", () => {
+    const out: string[] = [];
+    const s = new PhraseSegmenter((_t, i) => out.push(i.cut), DEFAULT_SEGMENTER_OPTIONS, () => 0, frozen);
+    s.push({ ...result("thank you all for joining today", 0, true, true), fromFinalize: true });
+    s.push(result("and now the first question please", 5, true, true)); // from_finalize false: a natural endpoint
+    expect(out).toEqual(["forced", "final"]);
+  });
+});

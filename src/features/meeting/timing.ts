@@ -44,7 +44,7 @@ export interface TimingStats {
   cache: { requests: number; hits: number; lastRead: number | null; readP50: number | null };
 }
 
-export const CUT_REASONS: readonly CutReason[] = ["final", "pause", "quiet", "maxWords", "maxAge", "hold", "flush"];
+export const CUT_REASONS: readonly CutReason[] = ["forced", "final", "pause", "quiet", "maxWords", "maxAge", "hold", "flush"];
 
 const series = (values: (number | null)[]): Series => {
   const v = values.filter((x): x is number => x !== null);

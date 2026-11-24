@@ -45,6 +45,8 @@ export interface SourceHealth {
   maxResultGapMs: number;
   /** Phrases dropped as phantom languages / non-Latin script. */
   filtered: number;
+  /** Forced Finalize messages sent to the vendor (0 unless ?fin= is set). */
+  finalizes: number;
 }
 
 export interface CaptionSourceOptions {
@@ -83,6 +85,7 @@ export class CaptionSource {
   private filtered = 0;
   private maxChunkGapMs = 0;
   private maxResultGapMs = 0;
+  private lastFinalizes = 0;
 
   constructor(private readonly o: CaptionSourceOptions) {
     this.segmenter = new PhraseSegmenter(
@@ -123,6 +126,7 @@ export class CaptionSource {
       endpointingMs: this.o.tuning.endpointingMs,
       languageHints: LANGUAGE_HINTS,
       keyterms: this.o.keyterms,
+      forceFinalizeMs: this.o.tuning.finalizeMs,
       timers: this.o.timers,
       onResult: (r) => this.onResult(r),
       onDrop: () => {
@@ -147,7 +151,12 @@ export class CaptionSource {
   }
 
   health(): SourceHealth {
-    return { maxChunkGapMs: this.maxChunkGapMs, maxResultGapMs: this.maxResultGapMs, filtered: this.filtered };
+    return {
+      maxChunkGapMs: this.maxChunkGapMs,
+      maxResultGapMs: this.maxResultGapMs,
+      filtered: this.filtered,
+      finalizes: this.session?.finalizesSent ?? this.lastFinalizes,
+    };
   }
 
   private onResult(r: SttResult) {
@@ -171,6 +180,7 @@ export class CaptionSource {
     this.stopped = true;
     this.flushAll();
     this.segmenter.dispose();
+    this.lastFinalizes = this.session?.finalizesSent ?? this.lastFinalizes;
     this.session?.close();
     this.tap?.dispose();
     this.o.stream.getTracks().forEach((t) => t.stop());

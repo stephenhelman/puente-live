@@ -29,7 +29,7 @@ describe("timing stats", () => {
 
   it("counts which rule cut each phrase and the cache hit rate", () => {
     const s = computeStats([rec(1, { cut: "final" }), rec(2, { cut: "pause" }), rec(3, { cut: "maxWords", cacheRead: 0 }), rec(4, { cut: "maxWords", cacheRead: 2600 })]);
-    expect(s.cuts).toMatchObject({ final: 1, pause: 1, maxWords: 2, quiet: 0, maxAge: 0, hold: 0, flush: 0 });
+    expect(s.cuts).toMatchObject({ forced: 0, final: 1, pause: 1, maxWords: 2, quiet: 0, maxAge: 0, hold: 0, flush: 0 });
     expect(s.cache).toMatchObject({ requests: 4, hits: 3, lastRead: 2600 });
   });
 
@@ -57,7 +57,7 @@ describe("timing stats", () => {
     });
     expect(text).toContain("2026-11-23T20:00:00.000Z");
     expect(text).toContain("url params: ep=300&debug=1");
-    expect(text).toContain("tuning: ep=300 pause=450 max=28 age=8000 quiet=900 hold=2500 ctx=6");
+    expect(text).toContain("tuning: ep=300 pause=450 max=28 age=8000 quiet=900 hold=2500 fin=0 ctx=6");
     expect(text).toContain("glossary profile: hemophilia");
     expect(text).toMatch(/speech end -> emitted\s+0\.60s\s+0\.60s/);
     expect(text).toMatch(/emitted -> first text\s+0\.90s/);

@@ -6,6 +6,7 @@ const TODAY = {
   endpointingMs: 400,
   segmenter: { maxWords: 28, maxAgeMs: 8000, holdMs: 2500, pauseMs: 450, quietMs: 900 },
   contextPhrases: 6,
+  finalizeMs: 0, // forced Finalize is OFF unless ?fin= is set
   stopTailMs: 300,
 };
 
@@ -28,19 +29,21 @@ describe("tuning", () => {
     expect(set("hold=1000").segmenter.holdMs).toBe(1000);
     expect(set("ctx=3").contextPhrases).toBe(3);
     expect(set("ctx=0").contextPhrases).toBe(0);
+    expect(set("fin=3000").finalizeMs).toBe(3000);
     // one parameter leaves every other field alone
     expect(set("max=14")).toEqual({ ...TODAY, segmenter: { ...TODAY.segmenter, maxWords: 14 } });
   });
 
   it("the whole tuned set from the field test", () => {
-    const t = applyTuningParams(DEFAULT_TUNING, "max=14&age=4000&ep=300&pause=350&quiet=600&hold=1000&ctx=3");
+    const t = applyTuningParams(DEFAULT_TUNING, "max=14&age=4000&ep=300&pause=350&quiet=600&hold=1000&ctx=3&fin=3000");
     expect(t).toEqual({
       endpointingMs: 300,
       segmenter: { maxWords: 14, maxAgeMs: 4000, holdMs: 1000, pauseMs: 350, quietMs: 600 },
       contextPhrases: 3,
+      finalizeMs: 3000,
       stopTailMs: 300,
     });
-    expect(describeTuning(t)).toBe("ep=300 pause=350 max=14 age=4000 quiet=600 hold=1000 ctx=3");
+    expect(describeTuning(t)).toBe("ep=300 pause=350 max=14 age=4000 quiet=600 hold=1000 fin=3000 ctx=3");
   });
 
   it("clamps numbers outside the range and rounds to whole numbers", () => {
@@ -53,6 +56,22 @@ describe("tuning", () => {
     expect(t.contextPhrases).toBe(6);
     expect(t.segmenter.pauseMs).toBe(450);
     expect(applyTuningParams(DEFAULT_TUNING, "ctx=-4").contextPhrases).toBe(0);
+  });
+
+  it("fin: 0 (or below) means off, 1-999 clamps up to 1000, large clamps to 15000, junk is ignored", () => {
+    const fin = (v: string) => applyTuningParams(DEFAULT_TUNING, `fin=${v}`).finalizeMs;
+    expect(fin("0")).toBe(0);
+    expect(fin("-5")).toBe(0);
+    expect(fin("500")).toBe(1000);
+    expect(fin("1000")).toBe(1000);
+    expect(fin("3000")).toBe(3000);
+    expect(fin("99999")).toBe(15_000);
+    expect(fin("abc")).toBe(0);
+    expect(fin("")).toBe(0);
+    // turning it off explicitly beats a page default that has it on
+    const on = { ...DEFAULT_TUNING, finalizeMs: 3000 };
+    expect(applyTuningParams(on, "fin=0").finalizeMs).toBe(0);
+    expect(applyTuningParams(on, "").finalizeMs).toBe(3000);
   });
 
   it("ignores junk: not a number, empty, infinite", () => {
@@ -76,9 +95,12 @@ describe("tuning", () => {
   it("every parameter has a sane range that contains its default", () => {
     for (const p of TUNING_PARAMS) {
       expect(p.min, p.param).toBeLessThan(p.max);
-      expect(p.get(DEFAULT_TUNING), p.param).toBeGreaterThanOrEqual(p.min);
-      expect(p.get(DEFAULT_TUNING), p.param).toBeLessThanOrEqual(p.max);
+      if (p.zeroIsOff) expect(p.get(DEFAULT_TUNING), p.param).toBe(0); // "off" is the default
+      else {
+        expect(p.get(DEFAULT_TUNING), p.param).toBeGreaterThanOrEqual(p.min);
+        expect(p.get(DEFAULT_TUNING), p.param).toBeLessThanOrEqual(p.max);
+      }
     }
-    expect(TUNING_PARAMS.map((p) => p.param)).toEqual(["ep", "pause", "max", "age", "quiet", "hold", "ctx"]);
+    expect(TUNING_PARAMS.map((p) => p.param)).toEqual(["ep", "pause", "max", "age", "quiet", "hold", "fin", "ctx"]);
   });
 });

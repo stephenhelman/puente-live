@@ -1,3 +1,4 @@
+import type { Timers } from "./timers";
 /** A single recognised word. `language` is the per-word language Deepgram reports when language=multi. */
 export interface SttWord {
   word: string;
@@ -41,6 +42,11 @@ export interface SttStartOptions {
   languageHints?: string[];
   /** Spellings the recognizer should favour (domain vocabulary). */
   keyterms?: string[];
+  /**
+   * Timer functions for the keep-alive. A hidden or occluded window throttles setInterval to once a minute, which would
+   * let the socket idle out; pass Worker-backed timers there. Defaults to the globals.
+   */
+  timers?: Timers;
   onResult: (r: SttResult) => void;
   onError: (e: Error) => void;
   onClose: (info: { code: number; reason: string }) => void;
