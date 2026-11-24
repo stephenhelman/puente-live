@@ -239,31 +239,46 @@ segmenter cuts only on finals, so `max` and `age` cannot act until one arrives. 
 sends the vendor's `Finalize` message, and a final arrives at a moment we choose.
 
 - The clock starts at the first interim text after a final and **resets on every final** (natural or forced).
-- At the limit it looks at the newest interim: if its last word is the same word the previous interim had in that position (it has
-  settled), it finalizes at once; otherwise it waits up to 500 ms more for that, then finalizes anyway.
-- At most one Finalize per interval; a new interim starts the next one.
-- Timers are the injected (Worker) timers, and the deadlines are also enforced from the clock on each vendor result, so a
-  background window does not delay them.
-- The resulting text goes through the segmenter's rules unchanged. A cut made at a final that came from our Finalize
-  (`from_finalize`) is reported as cut `forced` in the debug panel, even though the vendor also flags those results
-  `speech_final` (measured). A natural endpoint still says `final`. A forced final that no rule cuts is buffered like any other.
-- **Off by default** (`fin=0`) on `/meeting` and `/converse`. The debug panel shows how many Finalize messages were sent.
+- At the limit it finalizes at once only if the newest interim is **stable**: the same length and last word as the previous one.
+  Otherwise it waits up to 500 ms for that, then finalizes anyway.
+- **A shrinking interim is not stable.** When words disappear from the interim the recognizer is reconsidering (typically at an
+  English to Spanish switch); finalizing then commits undecoded audio. After a shrink we wait 1500 ms without another one, and
+  never more than 3500 ms past the limit.
+- **A stale interim is not stable.** If the interim has not changed for 2000 ms while audio flows, the recognizer is stuck (again
+  deciding on a language), not settled. We do not finalize it; we wait for it to change, then apply the rules above.
+- At most one Finalize per interval; a new interim starts the next one. Timers are the injected (Worker) timers, and the
+  deadlines are also enforced from the clock on each vendor result.
+- The resulting text goes through the segmenter's rules unchanged. A cut at a final that came from our Finalize
+  (`from_finalize`) is reported as cut `forced` in the debug panel (the vendor flags those results `speech_final` too).
+- **Off by default** (`fin=0`) on `/meeting` and `/converse`.
 
-The Deepgram keep-alive now runs on the same injected timers (it used plain `setInterval`, which a hidden window throttles to
-once a minute, enough to let an idle socket close).
+`CutRepair` (`stt/cutrepair.ts`, active only when `fin` is set) puts back words the vendor itself returned and then dropped:
+the leading word(s) of the next segment when its first interim had them and the final does not (guarded: the final's first word
+must match the interim's next word, and the restored words must start after the previous final ended), and the whole last interim
+when our Finalize is answered with an empty `from_finalize` final. It never adds a word the vendor did not return.
 
-### Forced Finalize measurements (50 s synthetic run-on speech, hemophilia profile, local server, two rounds)
+The Deepgram keep-alive runs on the same injected timers (it used plain `setInterval`, which a hidden window throttles).
 
-| p50 / p95 | defaults | presenter values (`max=14&age=4000&ep=300&pause=350&quiet=600&hold=1000&ctx=3`) | presenter + `fin=3000` |
-|---|---|---|---|
-| speech end to emitted | 1.70 / 8.87 s, 1.02 / 2.82 s | 1.28 / 8.86 s, 1.31 / 8.85 s | 0.31 / 4.20 s, 0.28 / 2.91 s |
-| speech end to first text | 2.86 / 9.74 s, 1.98 / 3.87 s | 2.30 / 9.77 s, 2.29 / 9.80 s | 1.18 / 4.84 s, 1.15 / 3.68 s |
-| word error rate vs script | 4.4 %, 9.4 % | 4.4 %, 4.4 % | 10.6 %, 5.0 % |
+### Where words are lost at a forced cut (investigation)
 
-(each cell: round 1, round 2). The first final from the vendor arrives ~5 s in, not 13 s, but without `fin` it still only
-finalizes at its own pace; with `fin=3000` every phrase is emitted within ~0.3 s of its last word. Vendor accuracy itself varies
-between identical runs (defaults: 4.4 % and 9.4 %), so single runs cannot show a small forced-cut cost. Forced cuts did drop single words at
-a boundary in both rounds ("hemophilia" in "your | treatment center"), never duplicated one, and end phrases mid-clause.
+Synthetic run-on speech, logged Deepgram messages around every Finalize (about 100 cuts over ~15 runs). **None of the losses were
+in our segmenter, de-duplication or phrase merging: the words are absent from the vendor's own finals.** Two of the cases were our
+"stable" rule being wrong (fixed above); the rest are vendor behavior:
+
+1. **A word being spoken at the instant of the cut is clipped** (about one word per six cuts: "treatment", "given", "schedule",
+   "will"). Half of those were returned in the first interim after the cut and then dropped from the final (restored by
+   `CutRepair`); half were never returned by any message (the cut fell inside a short word) and cannot be recovered.
+2. **The vendor answers Finalize with an empty final** and discards a whole pending segment its own interim had shown (16 words).
+   Restored by promoting that interim.
+3. **After a forced Finalize the vendor sometimes returns empty interims for 3-5 s while speech continues**, then an empty final.
+   Those words are never returned. It also happens (less often) with no forcing at all.
+4. **English to Spanish switch:** the vendor shows nothing for the new language for 2-3 s. A Finalize inside that window loses the
+   Spanish clause (~10 words). With forcing off only the first 2-3 words are lost.
+
+Measured over sequential single-stream runs of 50 s of run-on speech: `fin=3000` cuts speech-end to first-text from ~2.3 s to
+~1.2 s p50 (worst case 9.8 s to ~3.7 s) at the price of about +5 points of word error rate (10-11 % against 4-9 % unforced). `fin=8000`
+never fired in that audio. Real speakers pause more than synthetic speech, so forcing will fire less and cost less; test with a
+real presenter before turning it on by default.
 
 ## Glossary profiles
 

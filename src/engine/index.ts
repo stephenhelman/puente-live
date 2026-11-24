@@ -22,6 +22,7 @@ export {
   type Tuning,
   type TuningParam,
 } from "./tuning";
+export { CutRepair } from "./stt/cutrepair";
 export { ForcedFinalizer, type ForcedFinalizerOptions } from "./stt/finalizer";
 export { GLOBAL_TIMERS, type Timers } from "./stt/timers";
 export {

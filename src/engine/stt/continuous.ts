@@ -1,3 +1,4 @@
+import { CutRepair } from "./cutrepair";
 import { ForcedFinalizer } from "./finalizer";
 import { GLOBAL_TIMERS, type Timers } from "./timers";
 import type { SttProvider, SttResult, SttSession } from "./types";
@@ -43,6 +44,8 @@ export interface ContinuousSttSession {
   readonly reconnects: number;
   /** How many forced Finalize messages were sent (0 when forceFinalizeMs is off). */
   readonly finalizesSent: number;
+  /** Words the vendor returned in an interim around a forced cut, dropped from its final (or answered Finalize with nothing), and we put back. */
+  readonly wordsRestored: number;
   /** 16-bit LE mono PCM. Buffered (bounded) while reconnecting. */
   sendAudio(pcm: ArrayBuffer): void;
   close(): void;
@@ -71,6 +74,7 @@ export async function startContinuousStt(provider: SttProvider, opts: Continuous
   let wake: (() => void) | null = null;
   const timers = opts.timers ?? GLOBAL_TIMERS;
   const finalizer = new ForcedFinalizer({ limitMs: opts.forceFinalizeMs ?? 0, finalize: () => session?.finalize(), timers });
+  const repair = finalizer.enabled ? new CutRepair() : null; // only forced cuts need repairing
   let lastResultAt = Date.now();
   let lastAudioAt = 0;
 
@@ -93,7 +97,7 @@ export async function startContinuousStt(provider: SttProvider, opts: Continuous
         if (gen !== generation || closed) return;
         lastResultAt = Date.now();
         finalizer.push(r);
-        opts.onResult(r);
+        opts.onResult(repair ? repair.process(r) : r);
       },
       onError: () => {
         /* a failing socket is always followed by onClose, which drives the reconnect */
@@ -120,6 +124,7 @@ export async function startContinuousStt(provider: SttProvider, opts: Continuous
     reconnecting = true;
     session = null;
     finalizer.reset();
+    repair?.reset();
     setStatus("reconnecting", { attempt: 0, reason });
     opts.onDrop();
     const downSince = Date.now();
@@ -179,6 +184,9 @@ export async function startContinuousStt(provider: SttProvider, opts: Continuous
     },
     get finalizesSent() {
       return finalizer.finalizesSent;
+    },
+    get wordsRestored() {
+      return repair?.restored ?? 0;
     },
     sendAudio(pcm) {
       if (closed) return;

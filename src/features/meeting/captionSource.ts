@@ -47,6 +47,8 @@ export interface SourceHealth {
   filtered: number;
   /** Forced Finalize messages sent to the vendor (0 unless ?fin= is set). */
   finalizes: number;
+  /** Words put back after a forced cut (the vendor returned them in an interim, then dropped them from its final). */
+  restored: number;
 }
 
 export interface CaptionSourceOptions {
@@ -86,6 +88,7 @@ export class CaptionSource {
   private maxChunkGapMs = 0;
   private maxResultGapMs = 0;
   private lastFinalizes = 0;
+  private lastRestored = 0;
 
   constructor(private readonly o: CaptionSourceOptions) {
     this.segmenter = new PhraseSegmenter(
@@ -156,6 +159,7 @@ export class CaptionSource {
       maxResultGapMs: this.maxResultGapMs,
       filtered: this.filtered,
       finalizes: this.session?.finalizesSent ?? this.lastFinalizes,
+      restored: this.session?.wordsRestored ?? this.lastRestored,
     };
   }
 
@@ -181,6 +185,7 @@ export class CaptionSource {
     this.flushAll();
     this.segmenter.dispose();
     this.lastFinalizes = this.session?.finalizesSent ?? this.lastFinalizes;
+    this.lastRestored = this.session?.wordsRestored ?? this.lastRestored;
     this.session?.close();
     this.tap?.dispose();
     this.o.stream.getTracks().forEach((t) => t.stop());

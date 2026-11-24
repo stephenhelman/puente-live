@@ -38,7 +38,7 @@ export default function DebugPanel({ m }: { m: Meeting }) {
 
   const extra = [
     `page throttled ${d.throttleEvents}x (worst tick gap ${f(d.maxTickGapMs)}, hidden ${f(d.hiddenMs)}) · audio gap max ${d.maxChunkGapMs.toFixed(0)}ms · vendor gap max ${f(d.maxResultGapMs)}`,
-    `forced Finalize sent ${d.finalizes}${tuning.finalizeMs ? ` (fin=${tuning.finalizeMs} ms)` : " (off; set ?fin=3000)"}`,
+    `forced Finalize sent ${d.finalizes}${tuning.finalizeMs ? ` (fin=${tuning.finalizeMs} ms), words restored after cuts ${d.restored}` : " (off; set ?fin=3000)"}`,
     `leaks stripped ${d.leaks} · retries ${d.retries} · already-hint ${d.alreadyInTarget} · unchanged ${d.unchanged} · untranslated ${d.untranslated} · phantom dropped ${d.filtered}`,
   ];
 

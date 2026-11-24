@@ -31,6 +31,8 @@ export interface DebugInfo {
   filtered: number;
   /** Forced Finalize messages sent (all sources; 0 unless ?fin= is set). */
   finalizes: number;
+  /** Words restored after forced cuts (all sources). */
+  restored: number;
   leaks: number;
   retries: number;
   /** isAlreadyIn word-list heuristic fired (debug only; nothing is passed through any more). */
@@ -43,7 +45,7 @@ export interface DebugInfo {
 }
 
 const EMPTY_DEBUG: DebugInfo = {
-  throttleEvents: 0, maxTickGapMs: 0, hiddenMs: 0, maxChunkGapMs: 0, maxResultGapMs: 0, finalizes: 0,
+  throttleEvents: 0, maxTickGapMs: 0, hiddenMs: 0, maxChunkGapMs: 0, maxResultGapMs: 0, finalizes: 0, restored: 0,
   filtered: 0, leaks: 0, retries: 0, alreadyInTarget: 0, unchanged: 0, untranslated: 0, log: [],
 };
 const THROTTLE_GAP_MS = 3000;
@@ -292,6 +294,7 @@ export function useMeeting(defaultProfile: GlossaryProfile = DEFAULT_PROFILE) {
         maxChunkGapMs: Math.max(d.maxChunkGapMs, ...health.map((h) => h?.maxChunkGapMs ?? 0)),
         maxResultGapMs: Math.max(d.maxResultGapMs, ...health.map((h) => h?.maxResultGapMs ?? 0)),
         finalizes: Math.max(d.finalizes, health.reduce((n, h) => n + (h?.finalizes ?? 0), 0)),
+        restored: Math.max(d.restored, health.reduce((n, h) => n + (h?.restored ?? 0), 0)),
         log: late ? [...d.log, `page throttled: heartbeat ${(gap / 1000).toFixed(1)}s late`].slice(-LOG_LIMIT) : d.log,
       }));
       if (ms >= tuning.maxSessionMs) void stop();
