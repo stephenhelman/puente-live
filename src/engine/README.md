@@ -280,6 +280,28 @@ Measured over sequential single-stream runs of 50 s of run-on speech: `fin=3000`
 never fired in that audio. Real speakers pause more than synthetic speech, so forcing will fire less and cost less; test with a
 real presenter before turning it on by default.
 
+## Conversation mode (`/converse`)
+
+Split screen, one person per half (the top half is rotated 180°), tap to start and stop on your own side. The side that was
+tapped decides the language (a FIXED direction, unlike `/meeting` and `/present` where the model decides).
+
+- **Glossary profile.** Default `hemophilia`; a small select in each half's bar switches to `chapter` (saved in `localStorage`,
+  blocked or full storage is ignored); `?profile=` overrides and locks the select. The profile goes to the translation prompt and to
+  Deepgram as keyterms (`src/features/converse/profile.ts`).
+- **No turn limit.** A turn ends when the speaker taps, or after `?idle=` seconds (default 60, clamped 10-600, no "off") in which
+  NOBODY SPEAKS (no words recognised). The last 10 s (a third of a short limit) show "No speech heard: stopping in Ns" on the
+  speaker's button. A long answer is never cut off while words keep coming (`idle.ts`).
+- **Presenter tuning by default** (`max=14 age=4000 ep=300 pause=350 quiet=600 hold=1000 ctx=3`, defined once as
+  `PRESENTER_TUNING` in the engine, shared with `/present`): long turns translate phrase by phrase while the person keeps talking.
+  URL parameters still override. Forced Finalize is not used by `/converse`.
+- **Focus on the listener.** While someone speaks, their pane shrinks to a quarter (their button, a clear "Listening" state, their live
+  words in small text) and the other pane takes three quarters (the translation, large, streaming in). Both return to an even split when
+  the turn ends. It is one 200 ms `flex-grow` transition (none with reduced motion). To keep text still while it runs: the controls row
+  has one constant height, text sizes are viewport-based (a pane changing height does not re-wrap anything), the history is bottom-anchored,
+  a reader who follows the newest text stays glued to it through the resize (a `ResizeObserver` re-applies the scroll position) and a reader who
+  scrolled back up keeps their place; the translation's font size no longer steps down as a phrase gets long. Notices are hidden on the
+  speaking pane (errors are not).
+
 ## Presentation mode (`/present`): an OBS browser source
 
 `/present` is the caption overlay for a stream. It runs INSIDE OBS as a Browser Source (not a captured Chrome window): it listens

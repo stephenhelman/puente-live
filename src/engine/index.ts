@@ -16,6 +16,7 @@ export {
 export { detectLang, directionFor, normalizeLang, classifyPhrase, isAlreadyIn, textScores, type PhraseVerdict } from "./stt/language";
 export {
   DEFAULT_TUNING,
+  PRESENTER_TUNING,
   TUNING_PARAMS,
   applyTuningParams,
   describeTuning,

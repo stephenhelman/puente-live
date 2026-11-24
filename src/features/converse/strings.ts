@@ -11,7 +11,13 @@ export const S = {
   translating: { en: "Translating…", es: "Traduciendo…" },
   waitOtherSpeaking: { en: "Please wait: the other person is speaking", es: "Espere: la otra persona está hablando" },
   waitOtherTranslating: { en: "Please wait: translating…", es: "Espere: traduciendo…" },
-  secondsLeft: { en: "s left", es: "s restantes" },
+  silenceWarn: { en: "No speech heard: stopping in", es: "No se oye nada: se detendrá en" },
+  secondsShort: { en: "s", es: "s" },
+  glossary: { en: "Glossary", es: "Glosario" },
+  // One control, label included in the option text: a separate label would not fit beside the Clear button on a small phone.
+  profileHemophilia: { en: "Glossary: Hemophilia", es: "Glosario: Hemofilia" },
+  profileChapter: { en: "Glossary: Chapter", es: "Glosario: Capítulo" },
+  profileLocked: { en: "Set by the address", es: "Definido por la dirección" },
   phrases: { en: "Phrases", es: "Frases" },
   closePhrases: { en: "Close", es: "Cerrar" },
   clear: { en: "Clear conversation", es: "Borrar conversación" },
@@ -29,7 +35,6 @@ export const S = {
   phraseFailed: { en: "This part could not be translated.", es: "No se pudo traducir esta parte." },
   dismiss: { en: "Dismiss", es: "Cerrar aviso" },
   noSpeech: { en: "I didn't hear anything. Please try again.", es: "No escuché nada. Intente de nuevo." },
-  autoStop: { en: "Stopped after 60 seconds.", es: "Se detuvo después de 60 segundos." },
   screenMayDim: {
     en: "The screen may turn off. Keep it awake in your device settings.",
     es: "La pantalla puede apagarse. Manténgala encendida en la configuración del dispositivo.",
@@ -86,3 +91,8 @@ export const ERRORS: Record<ErrorKind, Pair> = {
     es: "Falló la traducción. Toque Reintentar.",
   },
 };
+
+/** The notice after the silence auto-stop. The number is the configured idle time (?idle=), not a turn limit. */
+export function autoStopText(lang: Lang, idleSec: number): string {
+  return lang === "en" ? `Stopped: no speech for ${idleSec} seconds.` : `Se detuvo: no se oyó nada durante ${idleSec} segundos.`;
+}

@@ -2,10 +2,12 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { Lang } from "@/engine";
+import type { GlossaryProfile } from "@/engine";
+import { paneRole } from "./focus";
 import { PHRASES, phraseText } from "./phrases";
-import { ERRORS, S } from "./strings";
+import { autoStopText, ERRORS, S } from "./strings";
 import type { WakeLockStatus } from "./useWakeLock";
-import { COUNTDOWN_FROM_SECONDS, type Conversation, type ConvTurn, type Segment } from "./useConversation";
+import type { Conversation, ConvTurn, Segment } from "./useConversation";
 import styles from "./converse.module.css";
 
 const VISIBLE_TURNS = 4;
@@ -34,9 +36,17 @@ function shownFor(turn: ConvTurn, lang: Lang): Shown | null {
   return segs.length ? { turn, own: false, segs } : null;
 }
 
+/** The glossary setting: one profile for the whole conversation, shared by both halves. */
+export interface ProfileSetting {
+  value: GlossaryProfile;
+  /** ?profile= in the address decides it: the control is shown but cannot be changed. */
+  locked: boolean;
+  onChange: (p: GlossaryProfile) => void;
+}
+
 /** One person's half of the screen, rendered entirely in that person's language. */
-export default function Half({ lang, conv, wake }: { lang: Lang; conv: Conversation; wake: WakeLockStatus }) {
-  const { phase, side, turns, error, notice, secondsLeft } = conv;
+export default function Half({ lang, conv, wake, profile }: { lang: Lang; conv: Conversation; wake: WakeLockStatus; profile: ProfileSetting }) {
+  const { phase, side, turns, error, notice, silenceLeft, idleSec } = conv;
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
   const historyRef = useRef<HTMLDivElement>(null);
@@ -44,6 +54,7 @@ export default function Half({ lang, conv, wake }: { lang: Lang; conv: Conversat
   const t = (k: keyof typeof S) => S[k][lang];
 
   const mine = side === lang;
+  const role = paneRole(side, lang);
   const idle = phase === "idle";
   const recordingMine = phase === "recording" && mine;
 
@@ -53,8 +64,9 @@ export default function Half({ lang, conv, wake }: { lang: Lang; conv: Conversat
     if (idle) return { label: t("tapToSpeak"), disabled: false };
     if (mine && phase === "starting") return { label: t("starting"), disabled: true };
     if (recordingMine) {
-      const warn = secondsLeft <= COUNTDOWN_FROM_SECONDS;
-      return { label: warn ? `${t("listening")} (${secondsLeft}${t("secondsLeft")})` : t("listening"), disabled: false };
+      // The only limit is silence: when nobody has spoken for a while, say how long until the turn stops by itself.
+      const warn = silenceLeft !== null;
+      return { label: warn ? `${t("silenceWarn")} ${silenceLeft}${t("secondsShort")}` : t("listening"), disabled: false };
     }
     if (mine) return { label: t("translating"), disabled: true };
     return { label: phase === "processing" ? t("waitOtherTranslating") : t("waitOtherSpeaking"), disabled: true };
@@ -63,15 +75,24 @@ export default function Half({ lang, conv, wake }: { lang: Lang; conv: Conversat
   const visible = turns.map((t) => shownFor(t, lang)).filter((x): x is Shown => x !== null).slice(-VISIBLE_TURNS);
   const showError = error !== null;
   const showHint = visible.length === 0;
-  const newest = visible[visible.length - 1];
-  const newestChars = newest && !newest.own ? newest.segs.reduce((n, s) => n + s.translation.length, 0) : 0;
-  const sizeClass = newestChars > 260 ? styles.xlong : newestChars > 120 ? styles.long : "";
 
   // Keep the newest text in view as phrases stream in, but never yank the view while someone reads older text.
   useEffect(() => {
     const el = historyRef.current;
     if (el && pinned.current) el.scrollTop = el.scrollHeight;
   });
+  // The half grows and shrinks when a turn starts and ends. A reader who is following the newest text stays glued to it
+  // through the animation (the scroll position is re-applied on every size change); a reader who scrolled back up keeps
+  // exactly what they were reading, because their scroll position is never touched.
+  useEffect(() => {
+    const el = historyRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => {
+      if (pinned.current) el.scrollTop = el.scrollHeight;
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   function onClear() {
     if (!confirmClear) {
@@ -84,17 +105,32 @@ export default function Half({ lang, conv, wake }: { lang: Lang; conv: Conversat
   }
 
   return (
-    <section lang={lang} className={`${styles.half} ${lang === "en" ? styles.en : styles.es}`}>
-      {/* Bar sits at the seam on both halves (DOM top; the Spanish half is rotated 180°). */}
-      <div className={styles.bar}>
+    <section
+      lang={lang}
+      data-role={role}
+      className={`${styles.half} ${lang === "en" ? styles.en : styles.es} ${role === "speaker" ? styles.speaker : role === "listener" ? styles.listener : ""}`}
+    >
+      {/* Bar sits at the seam on both halves (DOM top; the Spanish half is rotated 180°). It folds away on the speaking half. */}
+      <div className={styles.bar} aria-hidden={role === "speaker"}>
         <p className={styles.disclaimer}>{t("shortDisclaimer")}</p>
+        <label className={styles.profile} title={profile.locked ? t("profileLocked") : undefined}>
+          <select
+            aria-label={t("glossary")}
+            value={profile.value}
+            disabled={!idle || profile.locked}
+            onChange={(e) => profile.onChange(e.target.value as GlossaryProfile)}
+          >
+            <option value="hemophilia">{t("profileHemophilia")}</option>
+            <option value="chapter">{t("profileChapter")}</option>
+          </select>
+        </label>
         <button type="button" className={styles.small} onClick={onClear} disabled={turns.length === 0 && !error}>
           {confirmClear ? t("clearConfirm") : t("clear")}
         </button>
       </div>
 
       {(wake === "unsupported" || wake === "failed") && <p className={styles.notice}>{t("screenMayDim")}</p>}
-      {notice && <p className={styles.notice}>{notice === "no-speech" ? t("noSpeech") : t("autoStop")}</p>}
+      {notice && <p className={styles.notice}>{notice === "no-speech" ? t("noSpeech") : autoStopText(lang, idleSec)}</p>}
       {showError && error && (
         <div className={styles.error} role="alert">
           <p>{ERRORS[error.kind][lang]}</p>
@@ -139,7 +175,7 @@ export default function Half({ lang, conv, wake }: { lang: Lang; conv: Conversat
           }
           const last = shown.segs[shown.segs.length - 1]!;
           return (
-            <p key={shown.turn.id} className={`${cls} ${styles.theirs} ${age === 0 ? sizeClass : ""}`}>
+            <p key={shown.turn.id} className={`${cls} ${styles.theirs}`}>
               {shown.segs.map((seg) =>
                 seg.status === "error" ? (
                   <span key={seg.id} className={styles.segError} role="alert">

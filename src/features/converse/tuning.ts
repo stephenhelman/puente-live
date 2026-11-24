@@ -1,10 +1,15 @@
-import { applyTuningParams, DEFAULT_TUNING, type Tuning } from "@/engine";
+import { applyTuningParams, DEFAULT_TUNING, PRESENTER_TUNING, type Tuning } from "@/engine";
 
 /**
  * Live-translation tuning. The values, their ranges and the URL parameters live in the engine (src/engine/tuning.ts);
  * rationale and measurements: src/engine/README.md, "Phrase boundaries".
  */
 export const TUNING: Tuning = DEFAULT_TUNING;
+/**
+ * /converse's own defaults: the presenter values (short phrases that translate while the person keeps talking), so a long
+ * turn is read phrase by phrase instead of in one 28-word block. Forced Finalize stays off. URL parameters still override.
+ */
+export const CONVERSE_TUNING: Tuning = PRESENTER_TUNING;
 export type { Tuning };
 
 /**

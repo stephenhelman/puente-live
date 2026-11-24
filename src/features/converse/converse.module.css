@@ -1,7 +1,18 @@
-.root { height: 100dvh; display: grid; grid-template-rows: 1fr 1fr; background: #000; overflow: hidden; gap: 2px; }
-.rotated { transform: rotate(180deg); min-height: 0; display: grid; }
+/*
+ * Two panes share the screen. Idle: an even split. While someone speaks: the speaking pane shrinks to a quarter (their button
+ * and their live words) and the listening pane takes three quarters (the translation). The change is one 200 ms flex-grow
+ * transition. Nothing inside a pane changes size or font during it (all text sizes are viewport-based), and the history is
+ * anchored to the bottom, so the text a person is reading stays where it is while the space around it grows or shrinks.
+ */
+.root { height: 100dvh; display: flex; flex-direction: column; background: #000; overflow: hidden; gap: 2px; }
+.pane { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; transition: flex-grow .2s ease-out; }
+.pane > section { flex: 1; min-height: 0; }
+.pane[data-role="listener"] { flex-grow: 3; }
+.pane[data-role="speaker"] { flex-grow: 1; min-height: clamp(96px, 20dvh, 160px); }
+/* The rotated half's DOM top/bottom are swapped on screen: grow/shrink animate the same way, upside down. */
+.rotated { transform: rotate(180deg); }
 
-.half { --accent: #4da3ff; --accent-ink: #00152e; --bg: #071a33; position: relative; display: flex; flex-direction: column; min-height: 0; background: var(--bg); color: #fff; padding: 10px 14px 10px; }
+.half { --controls-h: clamp(84px, 13dvh, 132px); --accent: #4da3ff; --accent-ink: #00152e; --bg: #071a33; position: relative; display: flex; flex-direction: column; min-height: 0; background: var(--bg); color: #fff; padding: 10px 14px 10px; }
 .en { --accent: #4da3ff; --accent-ink: #00152e; --bg: #071a33; padding-bottom: calc(10px + env(safe-area-inset-bottom)); }
 /* The rotated half's DOM bottom is the physical top of the screen (status bar / notch side). */
 .es { --accent: #ffc247; --accent-ink: #2b1a00; --bg: #2b1c04; padding-bottom: calc(10px + env(safe-area-inset-top)); }
@@ -10,11 +21,18 @@
 .half button:disabled { opacity: .5; cursor: default; }
 .half button:focus-visible { outline: 4px solid #fff; outline-offset: 2px; }
 
-.bar { display: flex; gap: 12px; align-items: center; justify-content: space-between; }
-.disclaimer { margin: 0; font-size: max(13px, 1.6vmin); line-height: 1.25; color: rgba(255,255,255,.85); }
-.small { font-size: max(13px, 1.7vmin); white-space: nowrap; }
+/* Row 1: the disclaimer, full width. Row 2: the glossary and clear controls. (One row would squeeze the text on a phone.) */
+.bar { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; justify-content: space-between; max-height: 140px; overflow: hidden; transition: max-height .2s ease-out, opacity .2s ease-out; }
+.speaker .bar { max-height: 0; opacity: 0; pointer-events: none; }
+.profile { flex: 1.1 1 0; min-width: 0; display: flex; font-size: max(12.5px, 1.6vmin); white-space: nowrap; color: rgba(255,255,255,.85); }
+.half .profile select { flex: 1; width: 100%; min-width: 0; font: inherit; color: inherit; background: rgba(255,255,255,.1); border: 2px solid rgba(255,255,255,.55); border-radius: 10px; padding: 6px 8px; min-height: 40px; text-overflow: ellipsis; }
+.half .profile select:disabled { opacity: .55; }
+.disclaimer { flex: 1 1 100%; margin: 0; font-size: max(13px, 1.6vmin); line-height: 1.25; color: rgba(255,255,255,.85); }
+.half .small { flex: 1 1 0; min-width: 0; font-size: max(12.5px, 1.6vmin); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-inline: 10px; }
 
 .notice { margin: 6px 0 0; padding: 8px 12px; border-radius: 10px; background: rgba(255,255,255,.16); font-size: max(15px, 2.2vmin); }
+/* Whoever is speaking needs the room for their live words: hints and reminders wait until the turn is over. Errors still show. */
+.speaker .notice { display: none; }
 .error { margin: 6px 0 0; padding: 10px 12px; border-radius: 12px; background: #7a1118; border: 2px solid #ff8a8f; font-size: max(17px, 2.8vmin); }
 .error p { margin: 0 0 8px; }
 .errorActions { display: flex; gap: 10px; }
@@ -31,14 +49,16 @@
 .older { opacity: .62; }
 .older.theirs { font-size: clamp(1.3rem, 4vmin, 2.8rem); }
 .tail { font-style: italic; opacity: .6; }
-.long { font-size: clamp(1.5rem, 4.8vmin, 3.4rem); }
-.xlong { font-size: clamp(1.25rem, 3.8vmin, 2.6rem); }
 .segError { display: inline-flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: clamp(1rem, 2.6vmin, 1.6rem); font-weight: 600; color: #ffb3b6; }
 .segError button { font-size: clamp(1rem, 2.6vmin, 1.5rem); font-weight: 700; }
 .caret { display: inline-block; width: .5ch; height: 1em; margin-left: 4px; background: var(--accent); vertical-align: -0.12em; animation: blink 1s steps(2, start) infinite; }
 
-.controls { display: flex; gap: 10px; flex: 0 0 clamp(92px, 26%, 210px); }
-.phrasesBtn { flex: 0 0 clamp(88px, 18%, 180px); font-size: clamp(1.1rem, 2.8vmin, 1.7rem); font-weight: 650; }
+/* ONE height in every state. The history sits above this row and is anchored to its top edge, so while a pane grows or shrinks
+   the text a person is reading stays exactly where it is on the screen. */
+.controls { display: flex; gap: 10px; flex: 0 0 var(--controls-h); }
+.phrasesBtn { flex: 0 0 clamp(88px, 18%, 180px); font-size: clamp(1.1rem, 2.8vmin, 1.7rem); font-weight: 650; transition: flex-basis .2s ease-out, opacity .2s ease-out, padding .2s ease-out; }
+/* Phrases cannot be used while a turn is on, so the button folds away and the talk button takes its width. */
+.half.speaker .phrasesBtn, .half.listener .phrasesBtn { flex-basis: 0; padding-inline: 0; border-width: 0; opacity: 0; overflow: hidden; min-width: 0; pointer-events: none; }
 .half .talk { flex: 1; display: flex; align-items: center; justify-content: center; gap: 14px; text-align: center; background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-size: clamp(1.35rem, 4.2vmin, 2.8rem); font-weight: 800; line-height: 1.15; border-radius: 18px; }
 .half .talk:disabled { background: #3b4048; color: #fff; border-color: #6b7280; opacity: 1; font-size: clamp(1.1rem, 3vmin, 2rem); font-weight: 650; }
 .half .talk.recording { background: #d1242f; color: #fff; border-color: #ffb3b6; animation: pulse 1.4s ease-in-out infinite; }
@@ -61,4 +81,4 @@
 
 @keyframes blink { to { visibility: hidden; } }
 @keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(255,138,143,.7); } 50% { box-shadow: 0 0 0 14px rgba(255,138,143,0); } }
-@media (prefers-reduced-motion: reduce) { .half .talk.recording, .caret, .recording .dot { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .half .talk.recording, .caret, .recording .dot { animation: none; } .pane, .bar, .phrasesBtn { transition: none; } }

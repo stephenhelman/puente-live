@@ -1,16 +1,5 @@
-import { DEFAULT_TUNING, type Tuning } from "@/engine";
-
-/**
- * /present's own phrase-boundary defaults (presenters speak in long runs): the values measured in the tuning work.
- * Forced Finalize stays OFF (`fin=0`); `?fin=`, `?max=` and the rest still override.
- */
-export const PRESENTER_TUNING: Tuning = {
-  ...DEFAULT_TUNING,
-  endpointingMs: 300,
-  segmenter: { ...DEFAULT_TUNING.segmenter, maxWords: 14, maxAgeMs: 4000, pauseMs: 350, quietMs: 600, holdMs: 1000 },
-  contextPhrases: 3,
-  finalizeMs: 0,
-};
+/** /present's phrase-boundary defaults: the presenter values, defined once in the engine (shared with /converse). */
+export { PRESENTER_TUNING } from "@/engine";
 
 export type Align = "bottom" | "top" | "center";
 export type Bg = "transparent" | "dark";

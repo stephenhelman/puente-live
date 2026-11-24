@@ -1,17 +1,19 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { EN_TO_ES, ES_TO_EN, PhraseSegmenter, otherLang, type ContextPair, type Direction, type Lang } from "@/engine";
+import {
+  EN_TO_ES, ES_TO_EN, PhraseSegmenter, glossaryKeyterms, loadGlossary, otherLang,
+  type ContextPair, type Direction, type GlossaryProfile, type Lang,
+} from "@/engine";
 import { openMic, type MicCapture } from "@/features/audio/mic";
 import { SpeechCapture } from "@/features/audio/speechCapture";
 import { TokenError } from "@/features/audio/token";
 import type { ErrorKind } from "./strings";
 import { streamTranslate } from "./streamTranslate";
 import { PHRASES, phraseText } from "./phrases";
-import { getTuning, TUNING, type Tuning } from "./tuning";
+import { silenceState } from "./idle";
+import { CONVERSE_TUNING, getTuning, type Tuning } from "./tuning";
 
-export const MAX_TURN_SECONDS = 60;
-export const COUNTDOWN_FROM_SECONDS = 10;
 const HISTORY_LIMIT = 40; // kept in memory; each half only renders the last few
 
 export type Phase = "idle" | "starting" | "recording" | "processing";
@@ -66,18 +68,27 @@ interface Recording {
   inflight: Set<Promise<void>>;
 }
 
+export interface ConversationConfig {
+  /** Glossary profile for the translation prompt and the recognizer's vocabulary. */
+  profile: GlossaryProfile;
+  /** A turn stops by itself after this many seconds with nobody speaking. There is no limit on a turn's length. */
+  idleSec: number;
+}
+
 /**
  * All conversation state lives here, in memory only. One turn at a time:
  * idle -> starting -> recording -> processing (flush + finish translating) -> idle.
  * While recording, each finished phrase is translated immediately; the turn is never re-translated as a whole.
+ * A turn ends when the speaker taps, or after `idleSec` seconds of nobody speaking; never because it got long.
  */
-export function useConversation() {
+export function useConversation(config: ConversationConfig) {
   const [phase, setPhaseState] = useState<Phase>("idle");
   const [side, setSide] = useState<Lang | null>(null);
   const [turns, setTurns] = useState<ConvTurn[]>([]);
   const [error, setError] = useState<ConvError | null>(null);
   const [notice, setNotice] = useState<Notice>(null);
-  const [secondsLeft, setSecondsLeft] = useState(MAX_TURN_SECONDS);
+  /** Seconds until the silence auto-stop, only while inside its warning window (otherwise null). */
+  const [silenceLeft, setSilenceLeft] = useState<number | null>(null);
 
   // Refs are the source of truth for logic running in callbacks/timers; state mirrors them for rendering.
   const turnsRef = useRef<ConvTurn[]>([]);
@@ -94,6 +105,10 @@ export function useConversation() {
   const mounted = useRef(true);
   /** Bumped by clear(): anything started in an earlier generation drops its results. */
   const generation = useRef(0);
+  /** The latest config, read by callbacks and timers (set in an effect, never during render). */
+  const configRef = useRef(config);
+  /** When anyone last spoke in this turn (or the turn began): the silence countdown runs from here. */
+  const lastVoiceAt = useRef(0);
 
   const commit = useCallback((fn: (prev: ConvTurn[]) => ConvTurn[]) => {
     turnsRef.current = fn(turnsRef.current).slice(-HISTORY_LIMIT);
@@ -124,6 +139,7 @@ export function useConversation() {
   const clearTurnTimer = useCallback(() => {
     if (turnTimer.current) clearInterval(turnTimer.current);
     turnTimer.current = null;
+    setSilenceLeft(null);
   }, []);
 
   const showNotice = useCallback((n: Notice) => {
@@ -147,7 +163,7 @@ export function useConversation() {
       if (!turn || idx < 0) return;
       const seg = turn.segments[idx]!;
       // Per-turn context only: earlier phrases (source, plus their translation when it has arrived). Never persisted.
-      const context: ContextPair[] = turn.segments.slice(Math.max(0, idx - (rec?.tuning ?? TUNING).contextPhrases), idx).map((s) => ({
+      const context: ContextPair[] = turn.segments.slice(Math.max(0, idx - (rec?.tuning ?? CONVERSE_TUNING).contextPhrases), idx).map((s) => ({
         source: s.source,
         translation: s.status === "done" && s.translation ? s.translation : undefined,
       }));
@@ -157,7 +173,7 @@ export function useConversation() {
       try {
         const final = await streamTranslate(
           seg.source,
-          directionFrom(turn.speaker),
+          { ...directionFrom(turn.speaker), profile: configRef.current.profile },
           (soFar) => {
             if (gen === generation.current) patchSegment(turnId, segId, { translation: soFar });
           },
@@ -267,7 +283,7 @@ export function useConversation() {
 
       const turnId = nextId.current++;
       commit((prev) => [...prev, { id: turnId, speaker, source: "speech", segments: [], tail: "", live: true }]);
-      const tuning = getTuning();
+      const tuning = getTuning(CONVERSE_TUNING);
       const rec: Recording = {
         turnId,
         tuning,
@@ -281,8 +297,10 @@ export function useConversation() {
 
       const cap = new SpeechCapture({
         endpointingMs: tuning.endpointingMs,
+        keyterms: glossaryKeyterms(loadGlossary(configRef.current.profile)),
         onResult: (r) => {
           if (rec.gen !== generation.current) return;
+          if (r.text.trim()) lastVoiceAt.current = Date.now(); // someone is talking: the silence countdown starts over
           rec.interim = r.isFinal ? "" : r.text;
           rec.segmenter.push(r);
           const tail = [rec.segmenter.pending, rec.interim].filter(Boolean).join(" ");
@@ -301,14 +319,14 @@ export function useConversation() {
       });
       capture.current = cap;
       mic.current.start((pcm) => cap.push(pcm));
-      setSecondsLeft(MAX_TURN_SECONDS);
+      lastVoiceAt.current = Date.now(); // a person who has not started yet gets the full idle time to begin
       setPhase("recording");
 
-      const startedAt = Date.now();
       turnTimer.current = setInterval(() => {
-        const left = MAX_TURN_SECONDS - Math.floor((Date.now() - startedAt) / 1000);
-        setSecondsLeft(Math.max(0, left));
-        if (left <= 0) void stop("auto");
+        const st = silenceState(Date.now(), lastVoiceAt.current, configRef.current.idleSec);
+        const shown = st.warn ? st.secondsLeft : null;
+        setSilenceLeft((prev) => (prev === shown ? prev : shown));
+        if (st.expired) void stop("auto");
       }, 250);
     },
     [clearTurnTimer, commit, finishRecording, onPhrase, patchTurn, setActiveSide, setPhase, showNotice, stop, toIdle],
@@ -383,6 +401,10 @@ export function useConversation() {
 
   // Release the microphone when the page is hidden (idle) or leaves; reopened on the next tap.
   useEffect(() => {
+    configRef.current = config;
+  }, [config]);
+
+  useEffect(() => {
     mounted.current = true;
     const ctrls = controllers.current;
     const onHidden = () => {
@@ -407,7 +429,7 @@ export function useConversation() {
     };
   }, [clearTurnTimer, stop]);
 
-  return { phase, side, turns, error, notice, secondsLeft, toggle, retry, retrySegment, dismissError, sayPhrase, clear };
+  return { phase, side, turns, error, notice, silenceLeft, idleSec: config.idleSec, profile: config.profile, toggle, retry, retrySegment, dismissError, sayPhrase, clear };
 }
 
 export type Conversation = ReturnType<typeof useConversation>;

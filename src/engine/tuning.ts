@@ -26,6 +26,19 @@ export const DEFAULT_TUNING: Tuning = {
   stopTailMs: 300,
 };
 
+/**
+ * Phrase boundaries for people who speak in long runs (a presenter, someone giving a long answer): short phrases that
+ * translate while the speaker keeps talking. The values measured in the tuning work (src/engine/README.md). Forced Finalize
+ * stays off. Used by /present and /converse; the URL parameters still override every one.
+ */
+export const PRESENTER_TUNING: Tuning = {
+  ...DEFAULT_TUNING,
+  endpointingMs: 300,
+  segmenter: { ...DEFAULT_TUNING.segmenter, maxWords: 14, maxAgeMs: 4000, pauseMs: 350, quietMs: 600, holdMs: 1000 },
+  contextPhrases: 3,
+  finalizeMs: 0,
+};
+
 export interface TuningParam {
   /** The URL query parameter. */
   param: string;

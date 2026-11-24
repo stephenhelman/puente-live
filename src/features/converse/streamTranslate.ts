@@ -13,6 +13,9 @@ export interface StreamResult {
   usage?: { inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number };
 }
 
+/** A fixed direction (the side that was tapped decides the language), optionally with the glossary profile for the prompt. */
+export type FixedDirection = Direction & { profile?: GlossaryProfile };
+
 /** Auto mode: no one says which language is spoken; the model decides and translates into the other one. */
 export interface AutoDirection {
   auto: true;
@@ -29,7 +32,7 @@ export interface AutoDirection {
  */
 export async function streamTranslate(
   text: string,
-  direction: Direction | AutoDirection,
+  direction: FixedDirection | AutoDirection,
   onText: (soFar: string) => void,
   signal?: AbortSignal,
   context?: ContextPair[],
@@ -42,7 +45,11 @@ export async function streamTranslate(
     res = await fetch("/api/translate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify("auto" in direction ? { text, auto: true, hint: direction.hint, profile: direction.profile, stream: true, context } : { text, direction, stream: true, context }),
+      body: JSON.stringify(
+        "auto" in direction
+          ? { text, auto: true, hint: direction.hint, profile: direction.profile, stream: true, context }
+          : { text, direction: { from: direction.from, to: direction.to }, profile: direction.profile, stream: true, context },
+      ),
       signal,
     });
   } catch (e) {

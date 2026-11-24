@@ -11,6 +11,8 @@ const provider = new DeepgramSttProvider();
 export interface SpeechCaptureOptions {
   /** How long a pause must last before Deepgram marks speech_final (phrase boundary). */
   endpointingMs: number;
+  /** Domain vocabulary to favour in recognition (a glossary profile's keyterms). */
+  keyterms?: string[];
   /** Every interim and final result, in order, while recording and during the final flush. */
   onResult: (r: SttResult) => void;
   /** Connection failed or dropped BEFORE finish() was called. After finish(), failures reject finish(). */
@@ -45,6 +47,7 @@ export class SpeechCapture {
         getToken: getDeepgramToken,
         sampleRate: STT_SAMPLE_RATE,
         endpointingMs: this.opts.endpointingMs,
+        keyterms: this.opts.keyterms,
         onResult: (r) => this.onResult(r),
         onError: (e) => this.fail(e),
         onClose: () => {
